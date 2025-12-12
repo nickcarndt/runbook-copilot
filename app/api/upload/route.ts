@@ -27,24 +27,110 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const requestId = uuidv4();
 
+  // Early validation of required environment variables
+  if (!process.env.OPENAI_API_KEY) {
+    const latency = Date.now() - startTime;
+    return NextResponse.json(
+      {
+        request_id: requestId,
+        error: { message: 'OPENAI_API_KEY environment variable is not set', code: 'CONFIG_ERROR' },
+        latency_ms: latency,
+      },
+      { status: 500 }
+    );
+  }
+
+  if (!process.env.DATABASE_URL) {
+    const latency = Date.now() - startTime;
+    return NextResponse.json(
+      {
+        request_id: requestId,
+        error: { message: 'DATABASE_URL environment variable is not set', code: 'CONFIG_ERROR' },
+        latency_ms: latency,
+      },
+      { status: 500 }
+    );
+  }
+
   try {
     // Demo safety gate
     if (!checkDemoToken(request)) {
-      await logUpload(requestId, Date.now() - startTime, 'error', 'Unauthorized');
+      const latency = Date.now() - startTime;
+      try {
+        await logUpload(requestId, latency, 'error', 'Unauthorized');
+      } catch (logError) {
+        // Ignore logging errors
+      }
       return NextResponse.json(
-        { error: 'Unauthorized', request_id: requestId },
+        {
+          request_id: requestId,
+          error: { message: 'Unauthorized', code: 'UNAUTHORIZED' },
+          latency_ms: latency,
+        },
         { status: 401 }
       );
     }
 
-    const body = await request.json();
-    const { blobUrls } = requestSchema.parse(body);
+    // Parse request body with error handling
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      const latency = Date.now() - startTime;
+      try {
+        await logUpload(requestId, latency, 'error', 'Invalid JSON in request body');
+      } catch (logError) {
+        // Ignore logging errors
+      }
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          error: { message: 'Invalid JSON in request body', code: 'PARSE_ERROR' },
+          latency_ms: latency,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate request body
+    let blobUrls: string[];
+    try {
+      const validated = requestSchema.parse(body);
+      blobUrls = validated.blobUrls;
+    } catch (validationError) {
+      const latency = Date.now() - startTime;
+      const errorMessage = validationError instanceof z.ZodError 
+        ? 'Invalid request body: ' + validationError.errors.map(e => e.message).join(', ')
+        : 'Invalid request body';
+      try {
+        await logUpload(requestId, latency, 'error', errorMessage);
+      } catch (logError) {
+        // Ignore logging errors
+      }
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          error: { message: errorMessage, code: 'VALIDATION_ERROR' },
+          latency_ms: latency,
+        },
+        { status: 400 }
+      );
+    }
 
     // Enforce max file count
     if (blobUrls.length > MAX_FILE_COUNT) {
-      await logUpload(requestId, Date.now() - startTime, 'error', `Exceeds max file count: ${blobUrls.length} > ${MAX_FILE_COUNT}`);
+      const latency = Date.now() - startTime;
+      try {
+        await logUpload(requestId, latency, 'error', `Exceeds max file count: ${blobUrls.length} > ${MAX_FILE_COUNT}`);
+      } catch (logError) {
+        // Ignore logging errors
+      }
       return NextResponse.json(
-        { error: `Maximum ${MAX_FILE_COUNT} files allowed`, request_id: requestId },
+        {
+          request_id: requestId,
+          error: { message: `Maximum ${MAX_FILE_COUNT} files allowed`, code: 'VALIDATION_ERROR' },
+          latency_ms: latency,
+        },
         { status: 400 }
       );
     }
@@ -54,95 +140,126 @@ export async function POST(request: NextRequest) {
     const processedFiles: Array<{ filename: string; chunks: number }> = [];
 
     for (const blobUrl of blobUrls) {
-      // Download file from blob
-      const fileResponse = await fetch(blobUrl);
-      if (!fileResponse.ok) {
-        throw new Error(`Failed to download file from ${blobUrl}`);
+      try {
+        // Download file from blob
+        const fileResponse = await fetch(blobUrl);
+        if (!fileResponse.ok) {
+          throw new Error(`Failed to download file from ${blobUrl}: ${fileResponse.status} ${fileResponse.statusText}`);
+        }
+
+        const buffer = Buffer.from(await fileResponse.arrayBuffer());
+        totalSize += buffer.length;
+
+        // Check total size limit
+        if (totalSize > MAX_TOTAL_SIZE_BYTES) {
+          const latency = Date.now() - startTime;
+          try {
+            await logUpload(requestId, latency, 'error', `Total size exceeds limit: ${(totalSize / 1024 / 1024).toFixed(2)}MB > ${MAX_TOTAL_SIZE_MB}MB`);
+          } catch (logError) {
+            // Ignore logging errors
+          }
+          return NextResponse.json(
+            {
+              request_id: requestId,
+              error: { message: `Total file size exceeds ${MAX_TOTAL_SIZE_MB}MB limit`, code: 'VALIDATION_ERROR' },
+              latency_ms: latency,
+            },
+            { status: 400 }
+          );
+        }
+
+        // Extract filename from blob URL or use default
+        const urlParts = blobUrl.split('/');
+        const filename = urlParts[urlParts.length - 1] || `file-${Date.now()}`;
+
+        // Determine file type and extract text
+        const isMarkdown = filename.endsWith('.md') || filename.endsWith('.MD') || filename.endsWith('.markdown');
+        const isPDF = filename.endsWith('.pdf') || filename.endsWith('.PDF');
+        
+        if (!isMarkdown && !isPDF) {
+          throw new Error(`Unsupported file type: ${filename}`);
+        }
+
+        let text: string;
+        if (isPDF) {
+          text = await extractTextFromPDF(buffer);
+        } else {
+          text = extractTextFromMarkdown(buffer);
+        }
+
+        // Create document record
+        const documentId = await insertDocument(filename);
+
+        // Chunk text (heading-aware for markdown)
+        const chunks = chunkText(text, isMarkdown);
+        let chunkCount = 0;
+
+        // Process chunks and create embeddings
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const embedding = await createEmbedding(chunk);
+          await insertChunk(documentId, i, chunk, embedding);
+          chunkCount++;
+        }
+
+        processedFiles.push({ filename, chunks: chunkCount });
+      } catch (fileError) {
+        // If processing a file fails, throw to outer catch
+        throw new Error(`Error processing file ${blobUrl}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
       }
-
-      const buffer = Buffer.from(await fileResponse.arrayBuffer());
-      totalSize += buffer.length;
-
-      // Check total size limit
-      if (totalSize > MAX_TOTAL_SIZE_BYTES) {
-        await logUpload(requestId, Date.now() - startTime, 'error', `Total size exceeds limit: ${(totalSize / 1024 / 1024).toFixed(2)}MB > ${MAX_TOTAL_SIZE_MB}MB`);
-        return NextResponse.json(
-          { error: `Total file size exceeds ${MAX_TOTAL_SIZE_MB}MB limit`, request_id: requestId },
-          { status: 400 }
-        );
-      }
-
-      // Extract filename from blob URL or use default
-      const urlParts = blobUrl.split('/');
-      const filename = urlParts[urlParts.length - 1] || `file-${Date.now()}`;
-
-      // Determine file type and extract text
-      const isMarkdown = filename.endsWith('.md') || filename.endsWith('.MD') || filename.endsWith('.markdown');
-      const isPDF = filename.endsWith('.pdf') || filename.endsWith('.PDF');
-      
-      if (!isMarkdown && !isPDF) {
-        throw new Error(`Unsupported file type: ${filename}`);
-      }
-
-      let text: string;
-      if (isPDF) {
-        text = await extractTextFromPDF(buffer);
-      } else {
-        text = extractTextFromMarkdown(buffer);
-      }
-
-      // Create document record
-      const documentId = await insertDocument(filename);
-
-      // Chunk text (heading-aware for markdown)
-      const chunks = chunkText(text, isMarkdown);
-      let chunkCount = 0;
-
-      // Process chunks and create embeddings
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const embedding = await createEmbedding(chunk);
-        await insertChunk(documentId, i, chunk, embedding);
-        chunkCount++;
-      }
-
-      processedFiles.push({ filename, chunks: chunkCount });
     }
 
     const latency = Date.now() - startTime;
     const totalChunks = processedFiles.reduce((sum, f) => sum + f.chunks, 0);
 
     // Log success
-    await logUpload(
-      requestId,
-      latency,
-      'success',
-      null
-    );
+    try {
+      await logUpload(
+        requestId,
+        latency,
+        'success',
+        null
+      );
+    } catch (logError) {
+      // Ignore logging errors, but continue
+    }
 
     return NextResponse.json({
       request_id: requestId,
+      latency_ms: latency,
       files_processed: processedFiles.length,
       total_chunks: totalChunks,
       files: processedFiles,
     });
   } catch (error) {
     const latency = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    await logUpload(requestId, latency, 'error', errorMessage);
+    let errorMessage = 'Unknown error';
+    let errorCode = 'INTERNAL_ERROR';
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Invalid request body', details: error.errors, request_id: requestId },
-        { status: 400 }
-      );
+      errorMessage = 'Invalid request body: ' + error.errors.map(e => e.message).join(', ');
+      errorCode = 'VALIDATION_ERROR';
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+      errorCode = error.name || 'INTERNAL_ERROR';
+    } else {
+      errorMessage = String(error);
+    }
+
+    // Try to log, but don't fail if logging fails
+    try {
+      await logUpload(requestId, latency, 'error', errorMessage);
+    } catch (logError) {
+      // Ignore logging errors
     }
 
     return NextResponse.json(
-      { error: errorMessage, request_id: requestId },
-      { status: 500 }
+      {
+        request_id: requestId,
+        error: { message: errorMessage, code: errorCode },
+        latency_ms: latency,
+      },
+      { status: error instanceof z.ZodError ? 400 : 500 }
     );
   }
 }
-

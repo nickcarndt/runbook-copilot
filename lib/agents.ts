@@ -67,7 +67,7 @@ Format your response with:
 // Create agent with OpenAI LLM
 export const runbookAgent = agent({
   tools: [searchRunbooksTool],
-  llm: openai({ model: 'gpt-4o-mini' }),
+  llm: openai({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini' }),
   systemPrompt: SYSTEM_PROMPT,
 });
 

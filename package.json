@@ -6,15 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:migrate": "psql \"$DATABASE_URL\" -f lib/schema.sql",
+    "db:reset": "psql \"$DATABASE_URL\" -c \"DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;\" && npm run db:migrate"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "next": "^14.2.0",
-    "@llamaindex/core": "^0.4.0",
-    "@llamaindex/openai": "^0.4.0",
-    "@llamaindex/workflow": "^0.4.0",
+    "@llamaindex/core": "^0.6.22",
+    "@llamaindex/openai": "^0.4.22",
+    "@llamaindex/workflow": "^1.1.24",
     "zod": "^3.23.8",
     "uuid": "^10.0.0",
     "@vercel/blob": "^0.20.0",

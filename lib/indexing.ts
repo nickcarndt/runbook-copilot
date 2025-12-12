@@ -112,10 +112,10 @@ function chunkMarkdownWithHeadings(text: string, maxChunkSize: number, overlap: 
   return chunks.filter(chunk => chunk.length > 0);
 }
 
-// Create embedding using OpenAI text-embedding-3-small
+// Create embedding using OpenAI
 export async function createEmbedding(text: string): Promise<number[]> {
   const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
     input: text,
   });
   return response.data[0].embedding;

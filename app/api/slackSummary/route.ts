@@ -32,7 +32,7 @@ Answer: ${answer}
 Format as a brief Slack message (2-3 sentences max). Use clear, professional tone. Include the key resolution steps.`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are a technical writer creating concise incident updates for Slack.' },
       { role: 'user', content: prompt },

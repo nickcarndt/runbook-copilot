@@ -1,61 +1,66 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { put } from '@vercel/blob';
-import { demoRunbooks } from '@/lib/demo-runbooks';
 
 interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
 }
 
+// Helper to safely parse response
+async function parseResponse(response: Response): Promise<any> {
+  const contentType = response.headers.get('content-type') || '';
+  
+  if (contentType.includes('application/json')) {
+    return await response.json();
+  } else {
+    const text = await response.text();
+    const status = response.status;
+    const statusText = response.statusText;
+    throw new Error(`Non-JSON response: ${status} ${statusText} ${text.substring(0, 200)}`);
+  }
+}
+
 export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>('');
+  const [blobAvailable, setBlobAvailable] = useState<boolean | null>(null);
+
+  // Check if Blob is available (we'll detect this on first upload attempt)
+  useEffect(() => {
+    // We can't check env vars on client, so we'll detect on first use
+    setBlobAvailable(null);
+  }, []);
 
   const handleUseDemoRunbooks = async () => {
     setUploading(true);
     setStatus('Loading demo runbooks...');
 
     try {
-      // Convert demo runbooks to markdown files and upload
-      const blobUrls: string[] = [];
+      // Build headers - add x-rbc-token if we have a demo token (client can't check env, so we'll let server handle it)
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       
-      for (const runbook of demoRunbooks) {
-        const markdownContent = runbook.content;
-        const blob = new Blob([markdownContent], { type: 'text/markdown' });
-        const file = new File([blob], `${runbook.title.replace(/\s+/g, '-')}.md`, {
-          type: 'text/markdown',
-        });
-
-        const uploadedBlob = await put(file.name, file, {
-          access: 'public',
-          contentType: 'text/markdown',
-        });
-        blobUrls.push(uploadedBlob.url);
-      }
-
-      setStatus('Processing demo runbooks...');
-
-      // Send blob URLs to server for processing
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/api/seedDemo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blobUrls }),
+        headers,
       });
 
-      const data = await response.json();
+      const data = await parseResponse(response);
+      
       if (response.ok) {
         setStatus(
-          `Success! Processed ${data.files_processed} file(s), ` +
-          `${data.total_chunks} chunks. Request ID: ${data.request_id}`
+          `Success! Indexed ${data.documents_indexed} document(s), ` +
+          `${data.chunks_indexed} chunks. Request ID: ${data.request_id}`
         );
         onDemoRunbooksLoad?.();
       } else {
-        setStatus(`Error: ${data.error || 'Upload failed'}`);
+        const errorMsg = data.error?.message || data.error || 'Failed to load demo runbooks';
+        setStatus(`Error: ${errorMsg} (${data.error?.code || 'UNKNOWN'})`);
       }
     } catch (error) {
       console.error('Demo runbooks error:', error);
-      setStatus(`Error: ${error instanceof Error ? error.message : 'Failed to load demo runbooks'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load demo runbooks';
+      setStatus(`Error: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
@@ -94,13 +99,26 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
       // Upload files to Vercel Blob
       const blobUrls: string[] = [];
       for (const file of validFiles) {
-        const blob = await put(file.name, file, {
-          access: 'public',
-          contentType: file.type,
-        });
-        blobUrls.push(blob.url);
+        try {
+          const blob = await put(file.name, file, {
+            access: 'public',
+            contentType: file.type,
+          });
+          blobUrls.push(blob.url);
+        } catch (blobError: any) {
+          // Check for Blob token error
+          const errorMsg = blobError?.message || String(blobError);
+          if (errorMsg.includes('No token found') || errorMsg.includes('token') || errorMsg.includes('BLOB_READ_WRITE_TOKEN')) {
+            setBlobAvailable(false);
+            setStatus('Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.');
+            setUploading(false);
+            return;
+          }
+          throw blobError;
+        }
       }
 
+      setBlobAvailable(true);
       setStatus('Processing files...');
 
       // Send blob URLs to server for processing
@@ -110,18 +128,28 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
         body: JSON.stringify({ blobUrls }),
       });
 
-      const data = await response.json();
+      const data = await parseResponse(response);
+      
       if (response.ok) {
         setStatus(
           `Success! Processed ${data.files_processed} file(s), ` +
           `${data.total_chunks} chunks. Request ID: ${data.request_id}`
         );
       } else {
-        setStatus(`Error: ${data.error || 'Upload failed'}`);
+        const errorMsg = data.error?.message || data.error || 'Upload failed';
+        setStatus(`Error: ${errorMsg} (${data.error?.code || 'UNKNOWN'})`);
       }
     } catch (error) {
       console.error('Upload error:', error);
-      setStatus(`Error: ${error instanceof Error ? error.message : 'Upload failed'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      if (errorMessage.includes('No token found') || errorMessage.includes('token') || errorMessage.includes('BLOB_READ_WRITE_TOKEN')) {
+        setBlobAvailable(false);
+        setStatus('Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.');
+      } else if (errorMessage.includes('Non-JSON response')) {
+        setStatus(`Error: ${errorMessage}`);
+      } else {
+        setStatus(`Error: ${errorMessage}`);
+      }
     } finally {
       setUploading(false);
     }
@@ -143,25 +171,35 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
       <div
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center"
+        className={`border-2 border-dashed rounded-lg p-8 text-center ${
+          blobAvailable === false 
+            ? 'border-gray-200 bg-gray-50' 
+            : 'border-gray-300'
+        }`}
       >
         <input
           type="file"
           accept=".pdf,.md,.markdown"
           onChange={handleFileSelect}
-          disabled={uploading}
+          disabled={uploading || blobAvailable === false}
           multiple
           className="hidden"
           id="file-input"
         />
-        <label
-          htmlFor="file-input"
-          className={`cursor-pointer ${
-            uploading ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'
-          }`}
-        >
-          {uploading ? 'Processing...' : 'Upload my own runbooks'}
-        </label>
+        {blobAvailable === false ? (
+          <div className="text-sm text-gray-600">
+            Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.
+          </div>
+        ) : (
+          <label
+            htmlFor="file-input"
+            className={`cursor-pointer ${
+              uploading ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'
+            }`}
+          >
+            {uploading ? 'Processing...' : 'Upload my own runbooks'}
+          </label>
+        )}
         {status && (
           <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
             {status}
