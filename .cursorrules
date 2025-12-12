@@ -1,0 +1,66 @@
+# Runbook Copilot - Cursor Rules
+
+## Project Overview
+Single Next.js 14+ TypeScript app (App Router) deployed on Vercel. Keep scope minimal.
+
+## Non-Goals
+- No real auth system
+- No teams
+- No dashboards
+- No background job system
+- No external queues
+
+## Architecture Rules
+
+### Framework & Routing
+- Use Next.js App Router
+- All API code lives in `app/api/*/route.ts`
+- All API routes must run in Node.js runtime (not Edge) to support PDF parsing and DB drivers
+
+### Database
+- Use Postgres + pgvector for embeddings storage and similarity search
+- Keep schema tiny
+
+### Code Style
+- Prefer simple, explicit code over clever abstractions
+- Validate all request bodies with zod
+
+### API Route Requirements
+Every API route must:
+1. Generate a `request_id` (uuid)
+2. Measure latency
+3. Write a row into `query_logs` (or `upload_logs`) on success/failure
+4. Return the `request_id` to the client
+
+### Security
+- Implement a "demo safety gate": if `RBC_DEMO_TOKEN` is set, require header `x-rbc-token` to match for all `/api/*` routes
+
+### Chat Endpoint
+- The chat endpoint must support streaming output
+
+## UI Rules
+
+### Page Structure
+- One page (`app/page.tsx`) with:
+  - Upload section
+  - Chat section
+  - Sources
+  - "Draft Slack update"
+  - Small collapsible Debug drawer
+
+### Styling
+- Keep styling minimal (Tailwind ok)
+- No design system required
+
+## Code Quality Rules
+
+### Comments
+- Add clear comments only where necessary (no essays)
+
+### Dependencies
+- No unused dependencies
+
+### Code Standards
+- Provide runnable code (no pseudocode)
+- When creating/modifying files, show the full file contents
+
