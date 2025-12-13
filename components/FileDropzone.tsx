@@ -24,9 +24,11 @@ async function parseResponse(response: Response): Promise<any> {
 
 export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
-  const [status, setStatus] = useState<string>('');
+  const [status, setStatus] = useState<string>(''); // Upload status only
+  const [demoStatus, setDemoStatus] = useState<string>(''); // Demo runbooks status
   const [blobAvailable, setBlobAvailable] = useState<boolean | null>(null);
   const [uploadCode, setUploadCode] = useState<string>('');
+  const [showUploadCode, setShowUploadCode] = useState(false);
 
   // Load upload code from localStorage
   useEffect(() => {
@@ -54,9 +56,17 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   // Check if uploads are enabled
   const uploadsEnabled = !demoOnly || !!uploadCode;
 
+  // Clear upload status when uploads become locked (to avoid showing stale success messages)
+  useEffect(() => {
+    if (!uploadsEnabled && status && !status.includes('locked')) {
+      setStatus('');
+    }
+  }, [uploadsEnabled, status]);
+
   const handleUseDemoRunbooks = async () => {
     setUploading(true);
-    setStatus('Loading demo runbooks...');
+    setDemoStatus('Loading demo runbooks...');
+    setStatus(''); // Clear upload status
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -69,19 +79,19 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       const data = await parseResponse(response);
       
       if (response.ok) {
-        setStatus(
+        setDemoStatus(
           `Success! Indexed ${data.inserted_documents} document(s), ` +
           `${data.inserted_chunks} chunks. Request ID: ${data.request_id}`
         );
         onDemoRunbooksLoad?.();
       } else {
         const errorMsg = data.error?.message || data.error || 'Failed to load demo runbooks';
-        setStatus(`Error: ${errorMsg} (${data.error?.code || 'UNKNOWN'})`);
+        setDemoStatus(`Error: ${errorMsg} (${data.error?.code || 'UNKNOWN'})`);
       }
     } catch (error) {
       console.error('Demo runbooks error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to load demo runbooks';
-      setStatus(`Error: ${errorMessage}`);
+      setDemoStatus(`Error: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
@@ -191,14 +201,21 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-4">
-        <button
-          onClick={handleUseDemoRunbooks}
-          disabled={uploading}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
-        >
-          Use demo runbooks
-        </button>
+      <div className="flex gap-4 items-start">
+        <div className="flex-1">
+          <button
+            onClick={handleUseDemoRunbooks}
+            disabled={uploading}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
+          >
+            Use demo runbooks
+          </button>
+          {demoStatus && (
+            <div className={`mt-2 text-sm ${demoStatus.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
+              {demoStatus}
+            </div>
+          )}
+        </div>
         <div className="text-sm text-gray-600 self-center">or</div>
       </div>
 
@@ -206,18 +223,25 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       {demoOnly && (
         <div className="border rounded-lg p-4 bg-gray-50">
           <label className="block text-sm font-medium mb-2">Upload Code</label>
-          <input
-            type="text"
-            value={uploadCode}
-            onChange={(e) => setUploadCode(e.target.value)}
-            placeholder="Enter upload code"
-            className="w-full border rounded px-3 py-2 text-sm"
-          />
-          {!uploadCode && (
-            <p className="mt-2 text-sm text-gray-600">
-              Uploads are locked for the public demo. Ask Nick for an upload code.
-            </p>
-          )}
+          <div className="relative">
+            <input
+              type={showUploadCode ? 'text' : 'password'}
+              value={uploadCode}
+              onChange={(e) => setUploadCode(e.target.value)}
+              placeholder="Enter upload code"
+              className="w-full border rounded px-3 py-2 text-sm pr-20"
+            />
+            <button
+              type="button"
+              onClick={() => setShowUploadCode(!showUploadCode)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600 hover:text-gray-800 px-2"
+            >
+              {showUploadCode ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-gray-600">
+            Optional — needed only to upload your own runbooks.
+          </p>
         </div>
       )}
 
@@ -258,7 +282,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
             {uploading ? 'Processing...' : 'Upload my own runbooks'}
           </label>
         )}
-        {status && (
+        {/* Only show status if it's from an upload attempt (not from demo runbooks) */}
+        {status && (status.includes('Processed') || status.includes('Upload') || status.includes('Error') || status.includes('locked')) && (
           <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
             {status}
           </div>
