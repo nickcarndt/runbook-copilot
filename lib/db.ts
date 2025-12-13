@@ -1,5 +1,19 @@
 import { Pool } from 'pg';
 
+// Suppress url.parse() deprecation warning from pg package (DEP0169)
+// This is a known issue with pg@8.x using deprecated url.parse() internally
+// The warning is harmless - pg will be updated to use WHATWG URL API in a future version
+if (typeof process !== 'undefined') {
+  const originalEmitWarning = process.emitWarning;
+  process.emitWarning = function(warning: any, type?: string, code?: string, ...args: any[]) {
+    // Suppress DEP0169 (url.parse() deprecation) warnings
+    if (code === 'DEP0169' || (typeof warning === 'string' && warning.includes('url.parse()'))) {
+      return;
+    }
+    return originalEmitWarning.call(process, warning, type, code, ...args);
+  };
+}
+
 // Single connection pool for serverless
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
