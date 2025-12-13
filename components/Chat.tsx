@@ -12,6 +12,7 @@ interface ChatProps {
   onSourcesUpdate?: (sources: Source[], requestId: string, latency: number, error?: { message: string; code?: string }) => void;
   onAnswerComplete?: (question: string, answer: string) => void;
   suggestedQuestions?: string[];
+  onQuestionSubmit?: () => void; // Callback when user submits a question (to clear suggested questions)
 }
 
 export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuestions = [], onQuestionSubmit }: ChatProps) {
