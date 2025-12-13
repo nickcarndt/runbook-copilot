@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
@@ -60,6 +61,61 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedDetails, setCopiedDetails] = useState(false);
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+  const tooltipTriggerRefs = useRef<Map<string, HTMLElement>>(new Map());
+
+  // Calculate tooltip position based on trigger element
+  const updateTooltipPosition = useCallback((tooltipId: string) => {
+    const trigger = tooltipTriggerRefs.current.get(tooltipId);
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const tooltipWidth = 260; // max-w-[260px]
+    const tooltipHeight = 60; // approximate height
+    const offset = 8;
+
+    // Center horizontally on icon
+    let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+    // Position above icon
+    let top = rect.top - tooltipHeight - offset;
+
+    // Clamp to viewport
+    left = Math.max(8, Math.min(left, window.innerWidth - tooltipWidth - 8));
+    top = Math.max(8, top);
+
+    setTooltipPosition({ top, left });
+  }, []);
+
+  // Update position on scroll/resize when tooltip is visible
+  useEffect(() => {
+    if (!showTooltip) return;
+
+    const handleUpdate = () => {
+      updateTooltipPosition(showTooltip);
+    };
+
+    window.addEventListener('scroll', handleUpdate, true);
+    window.addEventListener('resize', handleUpdate);
+
+    return () => {
+      window.removeEventListener('scroll', handleUpdate, true);
+      window.removeEventListener('resize', handleUpdate);
+    };
+  }, [showTooltip, updateTooltipPosition]);
+
+  // Handle Escape key to close tooltip
+  useEffect(() => {
+    if (!showTooltip) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowTooltip(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [showTooltip]);
 
   // Reset state when resetKey changes
   useEffect(() => {
@@ -641,28 +697,35 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                               </span>
                               <span className="relative inline-flex items-center">
                                 <button
+                                  ref={(el) => {
+                                    if (el) tooltipTriggerRefs.current.set('similarity-0', el);
+                                    else tooltipTriggerRefs.current.delete('similarity-0');
+                                  }}
                                   type="button"
                                   className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
                                   aria-label="Information about similarity metric"
                                   aria-describedby="tooltip-similarity-0"
-                                  onMouseEnter={() => setShowTooltip('similarity-0')}
+                                  onMouseEnter={() => {
+                                    setShowTooltip('similarity-0');
+                                    setTimeout(() => updateTooltipPosition('similarity-0'), 0);
+                                  }}
                                   onMouseLeave={() => setShowTooltip(null)}
-                                  onFocus={() => setShowTooltip('similarity-0')}
+                                  onFocus={() => {
+                                    setShowTooltip('similarity-0');
+                                    setTimeout(() => updateTooltipPosition('similarity-0'), 0);
+                                  }}
                                   onBlur={() => setShowTooltip(null)}
-                                  onClick={() => setShowTooltip(showTooltip === 'similarity-0' ? null : 'similarity-0')}
+                                  onClick={() => {
+                                    if (showTooltip === 'similarity-0') {
+                                      setShowTooltip(null);
+                                    } else {
+                                      setShowTooltip('similarity-0');
+                                      setTimeout(() => updateTooltipPosition('similarity-0'), 0);
+                                    }
+                                  }}
                                 >
                                   <span aria-hidden="true">ℹ️</span>
                                 </button>
-                                {showTooltip === 'similarity-0' && (
-                                  <div
-                                    id="tooltip-similarity-0"
-                                    role="tooltip"
-                                    className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 max-w-[260px] whitespace-normal rounded bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"
-                                  >
-                                    Cosine similarity between your question and this snippet.
-                                    <div className="absolute left-1/2 top-full -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
-                                  </div>
-                                )}
                               </span>
                             </div>
                             <div className="text-gray-400 text-[10px]">
@@ -693,7 +756,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       
                       {/* Show remaining previews when expanded */}
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.slice(1).map((result, i) => (
-                        <div key={i + 1} className="bg-white p-2.5 rounded border border-green-200">
+                        <div key={i + 1} className="bg-white p-2.5 rounded border border-gray-200">
                           <div className="font-medium text-gray-800 mb-1">
                             {result.filename} (chunk {result.chunkIndex})
                           </div>
@@ -767,6 +830,23 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
           </div>
         ) : null}
       </div>
+      
+      {/* Portal tooltips - render all active tooltips */}
+      {typeof window !== 'undefined' && showTooltip && tooltipPosition && createPortal(
+        <div
+          id={showTooltip}
+          role="tooltip"
+          className="fixed z-[9999] max-w-[260px] whitespace-normal rounded bg-slate-900 px-3 py-2 text-sm text-white shadow-lg pointer-events-none"
+          style={{
+            top: `${tooltipPosition.top}px`,
+            left: `${tooltipPosition.left}px`,
+          }}
+        >
+          Cosine similarity between your question and this snippet.
+          <div className="absolute left-1/2 top-full -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
+        </div>,
+        document.body
+      )}
 
     </div>
   );
