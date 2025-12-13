@@ -60,37 +60,77 @@ curl -X POST http://localhost:3000/api/seedDemo \
 
 ## Vercel Deployment
 
-1. **Create Vercel project:**
-   - Connect GitHub repository
-   - Select Next.js framework preset
+### Step 1: Create Vercel Project
 
-2. **Add Postgres database:**
-   - Vercel Dashboard → Storage → Create Database → Postgres
-   - Enable pgvector extension in database settings
-   - Copy connection string to `DATABASE_URL`
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
+2. Click "Add New" → "Project"
+3. Import your GitHub repository (`nickcarndt/runbook-copilot`)
+4. Select Next.js framework preset
+5. Click "Deploy" (don't worry about env vars yet)
 
-3. **Add Blob storage:**
-   - Vercel Dashboard → Storage → Create Database → Blob
-   - Copy token to `BLOB_READ_WRITE_TOKEN`
+### Step 2: Add Postgres Database
 
-4. **Set environment variables:**
-   - Vercel Dashboard → Settings → Environment Variables
-   - Add all required variables listed above
+1. In your Vercel project dashboard, go to **Storage** tab
+2. Click **Create Database** → **Postgres**
+3. Choose a name (e.g., `runbook-db`) and region
+4. After creation, go to **Settings** → **Extensions**
+5. Enable **pgvector** extension
+6. Go to **.env.local** tab and copy the `POSTGRES_URL` value
 
-5. **Run schema migration:**
-   - Use Vercel Postgres dashboard SQL editor to run `lib/schema.sql`
-   - Or run `npm run db:migrate` with `DATABASE_URL` set
+### Step 3: Add Blob Storage
 
-6. **Deploy:**
-   - Push to main branch (auto-deploys)
-   - Or manually deploy from Vercel Dashboard
+1. In **Storage** tab, click **Create Database** → **Blob**
+2. Choose a name (e.g., `runbook-blob`) and region
+3. After creation, go to **Settings** → **Environment Variables**
+4. Copy the `BLOB_READ_WRITE_TOKEN` value
 
-7. **Seed demo data:**
-   - Call `/api/seedDemo` endpoint with `x-rbc-token` header matching `RBC_DEMO_TOKEN`:
-   ```bash
-   curl -X POST https://your-app.vercel.app/api/seedDemo \
-     -H "Content-Type: application/json" \
-     -H "x-rbc-token: your_token" \
-     -d '{}'
-   ```
+### Step 4: Set Environment Variables
+
+1. Go to **Settings** → **Environment Variables**
+2. Add each variable (Production, Preview, Development):
+   - `OPENAI_API_KEY` = your OpenAI API key
+   - `OPENAI_MODEL` = `gpt-4o-mini`
+   - `OPENAI_EMBEDDING_MODEL` = `text-embedding-3-small`
+   - `RBC_DEMO_TOKEN` = a secure random token (e.g., generate with `openssl rand -hex 16`)
+   - `DATABASE_URL` = the `POSTGRES_URL` from Step 2
+   - `BLOB_READ_WRITE_TOKEN` = the token from Step 3
+
+### Step 5: Apply Database Schema
+
+Run the migration using the `db:vercel` script template:
+
+```bash
+npm run db:vercel
+```
+
+This prints the `psql` command. Copy it, replace `YOUR_DATABASE_URL` with your actual `POSTGRES_URL` from Vercel, and run it locally.
+
+Alternatively, use Vercel Postgres SQL Editor:
+1. Go to **Storage** → your Postgres database → **Data** tab
+2. Click **SQL Editor**
+3. Copy contents of `lib/schema.sql` and paste into editor
+4. Click **Run**
+
+### Step 6: Redeploy
+
+1. Go to **Deployments** tab
+2. Click **⋯** on latest deployment → **Redeploy**
+3. Wait for deployment to complete
+
+### Step 7: Seed Demo Data
+
+Call the `/api/seedDemo` endpoint:
+
+```bash
+curl -X POST https://your-app.vercel.app/api/seedDemo \
+  -H "Content-Type: application/json" \
+  -H "x-rbc-token: YOUR_RBC_DEMO_TOKEN" \
+  -d '{}'
+```
+
+Replace:
+- `your-app.vercel.app` with your actual Vercel domain
+- `YOUR_RBC_DEMO_TOKEN` with the value you set in Step 4
+
+You should see a response with `inserted_documents` and `inserted_chunks` counts.
 

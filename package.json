@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "psql \"$DATABASE_URL\" -f lib/schema.sql",
-    "db:reset": "psql \"$DATABASE_URL\" -c \"DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;\" && npm run db:migrate"
+    "db:reset": "psql \"$DATABASE_URL\" -c \"DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;\" && npm run db:migrate",
+    "db:vercel": "echo \"psql 'YOUR_DATABASE_URL' -f lib/schema.sql\" && echo \"\" && echo \"Replace YOUR_DATABASE_URL with your Vercel POSTGRES_URL from Storage → Settings → .env.local\""
   },
   "dependencies": {
     "@llamaindex/openai": "^0.4.22",
