@@ -268,6 +268,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
     setShowMorePreviews(false);
     setShowAdvanced(false);
     setCopiedDetails(false);
+    setShowTooltip(null);
     setUploading(true);
     setStatus('Uploading and processing files...');
     
@@ -585,10 +586,11 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         'Retrieval preview:',
                         ...previews.map((r, i) => {
                           let previewText = `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`;
-                          // Include similarity metric if advanced mode is enabled and distance is available
-                          if (showMorePreviews && showAdvanced && r.distance !== undefined) {
+                          // Include similarity metrics if scoring is enabled (matches what's visible on screen)
+                          if (showAdvanced && r.distance !== undefined) {
                             const similarity = Math.max(0, Math.min(1, 1 - r.distance));
-                            previewText += `\nSimilarity (cosine): ${similarity.toFixed(2)} (derived from cosine distance ${r.distance.toFixed(4)})`;
+                            previewText += `\nSimilarity (cosine): ${similarity.toFixed(2)} (higher is better)`;
+                            previewText += `\nCosine distance: ${r.distance.toFixed(4)} (lower is better)`;
                           }
                           return previewText;
                         }),
@@ -613,9 +615,9 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           {uploadSuccessData.topRetrievalPreview[0].filename} (chunk {uploadSuccessData.topRetrievalPreview[0].chunkIndex})
                         </div>
                         <div className="text-gray-700 mt-1 leading-relaxed">{uploadSuccessData.topRetrievalPreview[0].textPreview}</div>
-                        {/* Show similarity for first preview only when advanced is enabled AND show more is expanded */}
+                        {/* Show similarity metrics when scoring is enabled (on all visible cards) */}
                         {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
-                        {showMorePreviews && showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
+                        {showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
                           <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
                             <div className="flex items-center gap-1 relative">
                               <span>
@@ -652,16 +654,22 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         )}
                       </div>
                       
-                      {/* Show "Show more" link if there are more previews */}
-                      {uploadSuccessData.topRetrievalPreview.length > 1 && !showMorePreviews && (
+                      {/* Show "Show more" / "Show less" toggle if there are more previews */}
+                      {uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
-                          onClick={() => setShowMorePreviews(true)}
+                          onClick={() => {
+                            setShowMorePreviews(!showMorePreviews);
+                            // Auto-hide scoring when collapsing "Show more"
+                            if (showMorePreviews) {
+                              setShowAdvanced(false);
+                            }
+                          }}
                           className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
                           type="button"
-                          aria-expanded={false}
-                          aria-label={`Show ${uploadSuccessData.topRetrievalPreview.length - 1} more preview${uploadSuccessData.topRetrievalPreview.length - 1 > 1 ? 's' : ''}`}
+                          aria-expanded={showMorePreviews}
+                          aria-label={showMorePreviews ? 'Show less previews' : `Show ${uploadSuccessData.topRetrievalPreview.length - 1} more preview${uploadSuccessData.topRetrievalPreview.length - 1 > 1 ? 's' : ''}`}
                         >
-                          Show more ({uploadSuccessData.topRetrievalPreview.length - 1})
+                          {showMorePreviews ? 'Show less' : `Show more (${uploadSuccessData.topRetrievalPreview.length - 1})`}
                         </button>
                       )}
                       
@@ -711,7 +719,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         </div>
                       ))}
                       
-                      {/* Scoring toggle (only show when "Show more" is expanded) */}
+                      {/* Scoring toggle (only show when "Show more" is expanded AND there are multiple previews) */}
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
