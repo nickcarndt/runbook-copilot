@@ -119,35 +119,15 @@ export default function Home() {
   };
 
   const handleResetDemo = () => {
-    // Clear all UI state
-    setSuggestedQuestions([]);
-    setSources([]);
-    setDebugInfo(null);
-    setSlackSummary('');
-    setLastQuestion('');
-    setLastAnswer('');
-    setErrorRequestId('');
-    
-    // Clear localStorage keys
+    // Clear all localStorage keys first
     localStorage.removeItem('rbc_upload_token');
     localStorage.removeItem('rbc_upload_verified');
     localStorage.removeItem('rbc_public_demo');
     localStorage.removeItem('rbc_demo_loaded');
     
-    // Reset chat if ref is available
-    if (chatRef.current) {
-      chatRef.current.reset();
-    }
-    
-    // Trigger FileDropzone reset via key change
-    setResetKey(prev => prev + 1);
-    
-    // Show toast
-    setResetToast(true);
-    setTimeout(() => setResetToast(false), 2000);
-    
-    // Force refresh
-    router.refresh();
+    // Force a full page reload for reliable reset
+    // This ensures all state is cleared and components re-initialize
+    window.location.reload();
   };
 
   return (
@@ -185,6 +165,7 @@ export default function Home() {
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Chat</h2>
         <Chat
+          key={resetKey}
           ref={chatRef}
           onSourcesUpdate={handleSourcesUpdate}
           onAnswerComplete={handleAnswerComplete}

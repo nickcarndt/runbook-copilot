@@ -635,34 +635,35 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                         {showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
                           <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
-                            <div className="flex items-center gap-1 relative">
+                            <div className="flex items-center gap-1">
                               <span>
                                 Similarity (cosine): {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
                               </span>
-                              <button
-                                type="button"
-                                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                                aria-label="Information about similarity metric"
-                                aria-describedby="tooltip-similarity-0"
-                                onMouseEnter={() => setShowTooltip('similarity-0')}
-                                onMouseLeave={() => setShowTooltip(null)}
-                                onFocus={() => setShowTooltip('similarity-0')}
-                                onBlur={() => setShowTooltip(null)}
-                                onClick={() => setShowTooltip(showTooltip === 'similarity-0' ? null : 'similarity-0')}
-                              >
-                                <span aria-hidden="true">ℹ️</span>
-                              </button>
-                              {showTooltip === 'similarity-0' && (
-                                <div
-                                  id="tooltip-similarity-0"
-                                  role="tooltip"
-                                  className="absolute right-0 bottom-full mb-3 z-20 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
-                                  style={{ transform: 'translateX(0)' }}
+                              <span className="relative inline-flex items-center">
+                                <button
+                                  type="button"
+                                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                                  aria-label="Information about similarity metric"
+                                  aria-describedby="tooltip-similarity-0"
+                                  onMouseEnter={() => setShowTooltip('similarity-0')}
+                                  onMouseLeave={() => setShowTooltip(null)}
+                                  onFocus={() => setShowTooltip('similarity-0')}
+                                  onBlur={() => setShowTooltip(null)}
+                                  onClick={() => setShowTooltip(showTooltip === 'similarity-0' ? null : 'similarity-0')}
                                 >
-                                  How close this snippet is to your question (cosine similarity).
-                                  <div className="absolute top-full right-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
-                                </div>
-                              )}
+                                  <span aria-hidden="true">ℹ️</span>
+                                </button>
+                                {showTooltip === 'similarity-0' && (
+                                  <div
+                                    id="tooltip-similarity-0"
+                                    role="tooltip"
+                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 bg-gray-900 text-white text-xs rounded px-3 py-1.5 shadow-lg whitespace-normal max-w-[min(260px,80vw)]"
+                                  >
+                                    How close this snippet is to your question (cosine similarity).
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                  </div>
+                                )}
+                              </span>
                             </div>
                             <div className="text-gray-400 text-[10px]">
                               Cosine distance: {uploadSuccessData.topRetrievalPreview[0].distance.toFixed(4)} (lower is better)
@@ -700,34 +701,35 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                           {showAdvanced && result.distance !== undefined && (
                             <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
-                              <div className="flex items-center gap-1 relative">
+                              <div className="flex items-center gap-1">
                                 <span>
                                   Similarity (cosine): {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
                                 </span>
-                                <button
-                                  type="button"
-                                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                                  aria-label="Information about similarity metric"
-                                  aria-describedby={`tooltip-similarity-${i + 1}`}
-                                  onMouseEnter={() => setShowTooltip(`similarity-${i + 1}`)}
-                                  onMouseLeave={() => setShowTooltip(null)}
-                                  onFocus={() => setShowTooltip(`similarity-${i + 1}`)}
-                                  onBlur={() => setShowTooltip(null)}
-                                  onClick={() => setShowTooltip(showTooltip === `similarity-${i + 1}` ? null : `similarity-${i + 1}`)}
-                                >
-                                  <span aria-hidden="true">ℹ️</span>
-                                </button>
-                                {showTooltip === `similarity-${i + 1}` && (
-                                  <div
-                                    id={`tooltip-similarity-${i + 1}`}
-                                    role="tooltip"
-                                    className="absolute right-0 bottom-full mb-3 z-20 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
-                                    style={{ transform: 'translateX(0)' }}
+                                <span className="relative inline-flex items-center">
+                                  <button
+                                    type="button"
+                                    className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                                    aria-label="Information about similarity metric"
+                                    aria-describedby={`tooltip-similarity-${i + 1}`}
+                                    onMouseEnter={() => setShowTooltip(`similarity-${i + 1}`)}
+                                    onMouseLeave={() => setShowTooltip(null)}
+                                    onFocus={() => setShowTooltip(`similarity-${i + 1}`)}
+                                    onBlur={() => setShowTooltip(null)}
+                                    onClick={() => setShowTooltip(showTooltip === `similarity-${i + 1}` ? null : `similarity-${i + 1}`)}
                                   >
-                                    How close this snippet is to your question (cosine similarity).
-                                    <div className="absolute top-full right-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
-                                  </div>
-                                )}
+                                    <span aria-hidden="true">ℹ️</span>
+                                  </button>
+                                  {showTooltip === `similarity-${i + 1}` && (
+                                    <div
+                                      id={`tooltip-similarity-${i + 1}`}
+                                      role="tooltip"
+                                      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 bg-gray-900 text-white text-xs rounded px-3 py-1.5 shadow-lg whitespace-normal max-w-[min(260px,80vw)]"
+                                    >
+                                      How close this snippet is to your question (cosine similarity).
+                                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                    </div>
+                                  )}
+                                </span>
                               </div>
                               <div className="text-gray-400 text-[10px]">
                                 Cosine distance: {result.distance.toFixed(4)} (lower is better)
