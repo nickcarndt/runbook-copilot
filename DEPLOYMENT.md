@@ -7,9 +7,10 @@ Set these in `.env.local` for local development or in Vercel project settings:
 - `OPENAI_API_KEY` - OpenAI API key for embeddings and chat
 - `OPENAI_MODEL` - Chat model (default: `gpt-4o-mini`)
 - `OPENAI_EMBEDDING_MODEL` - Embedding model (default: `text-embedding-3-small`)
-- `RBC_DEMO_TOKEN` - Demo safety token (required for all `/api/*` routes if set)
+- `UPLOAD_TOKEN` - Token required for `/api/upload` only (set header `x-upload-token`). `/api/seedDemo` is public.
 - `DATABASE_URL` - PostgreSQL connection string with pgvector extension
 - `BLOB_READ_WRITE_TOKEN` - Vercel Blob storage token (optional for local dev)
+- `PUBLIC_DEMO` - Set to `true` to enable public demo mode (hides upload UI, shows warning banner)
 
 ## Local Setup
 
@@ -28,7 +29,7 @@ Set these in `.env.local` for local development or in Vercel project settings:
    OPENAI_API_KEY=your_key
    OPENAI_MODEL=gpt-4o-mini
    OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-   RBC_DEMO_TOKEN=devtoken
+   UPLOAD_TOKEN=your_random_hex_token
    DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
    ```
 
@@ -91,9 +92,10 @@ curl -X POST http://localhost:3000/api/seedDemo \
    - `OPENAI_API_KEY` = your OpenAI API key
    - `OPENAI_MODEL` = `gpt-4o-mini`
    - `OPENAI_EMBEDDING_MODEL` = `text-embedding-3-small`
-   - `RBC_DEMO_TOKEN` = a secure random token (e.g., generate with `openssl rand -hex 16`)
+   - `UPLOAD_TOKEN` = a secure random token for upload routes (e.g., generate with `openssl rand -hex 16`)
    - `DATABASE_URL` = the `POSTGRES_URL` from Step 2
    - `BLOB_READ_WRITE_TOKEN` = the token from Step 3
+   - `PUBLIC_DEMO` = `true` (optional, for public demos - hides upload UI)
 
 ### Step 5: Apply Database Schema
 
@@ -119,18 +121,22 @@ Alternatively, use Vercel Postgres SQL Editor:
 
 ### Step 7: Seed Demo Data
 
-Call the `/api/seedDemo` endpoint:
+The `/api/seedDemo` endpoint is public (no token required). You can seed demo data either:
 
+**Option 1: Via UI**
+1. Open your deployed app
+2. Click "Use demo runbooks" button
+
+**Option 2: Via API**
 ```bash
 curl -X POST https://your-app.vercel.app/api/seedDemo \
   -H "Content-Type: application/json" \
-  -H "x-rbc-token: YOUR_RBC_DEMO_TOKEN" \
   -d '{}'
 ```
 
-Replace:
-- `your-app.vercel.app` with your actual Vercel domain
-- `YOUR_RBC_DEMO_TOKEN` with the value you set in Step 4
+Replace `your-app.vercel.app` with your actual Vercel domain.
 
 You should see a response with `inserted_documents` and `inserted_chunks` counts.
+
+**Note:** `/api/upload` requires `UPLOAD_TOKEN` (header `x-upload-token`), but `/api/seedDemo` is public for easy demo setup.
 

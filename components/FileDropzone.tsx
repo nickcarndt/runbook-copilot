@@ -5,6 +5,7 @@ import { put } from '@vercel/blob';
 
 interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
+  demoOnly?: boolean; // When true, hides upload UI (for public demos)
 }
 
 // Helper to safely parse response
@@ -21,7 +22,7 @@ async function parseResponse(response: Response): Promise<any> {
   }
 }
 
-export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) {
+export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [blobAvailable, setBlobAvailable] = useState<boolean | null>(null);
@@ -37,7 +38,6 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
     setStatus('Loading demo runbooks...');
 
     try {
-      // Build headers - add x-rbc-token if we have a demo token (client can't check env, so we'll let server handle it)
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       
       const response = await fetch('/api/seedDemo', {
@@ -136,8 +136,13 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
           `${data.total_chunks} chunks. Request ID: ${data.request_id}`
         );
       } else {
-        const errorMsg = data.error?.message || data.error || 'Upload failed';
-        setStatus(`Error: ${errorMsg} (${data.error?.code || 'UNKNOWN'})`);
+        const errorCode = data.error?.code || '';
+        if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED')) {
+          setStatus('Uploads are locked for the public demo. Ask Nick for an upload code.');
+        } else {
+          const errorMsg = data.error?.message || data.error || 'Upload failed';
+          setStatus(`Error: ${errorMsg} (${errorCode || 'UNKNOWN'})`);
+        }
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -165,47 +170,54 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
         >
           Use demo runbooks
         </button>
-        <div className="text-sm text-gray-600 self-center">or</div>
+        {!demoOnly && <div className="text-sm text-gray-600 self-center">or</div>}
       </div>
 
-      <div
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center ${
-          blobAvailable === false 
-            ? 'border-gray-200 bg-gray-50' 
-            : 'border-gray-300'
-        }`}
-      >
-        <input
-          type="file"
-          accept=".pdf,.md,.markdown"
-          onChange={handleFileSelect}
-          disabled={uploading || blobAvailable === false}
-          multiple
-          className="hidden"
-          id="file-input"
-        />
-        {blobAvailable === false ? (
-          <div className="text-sm text-gray-600">
-            Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.
-          </div>
-        ) : (
-          <label
-            htmlFor="file-input"
-            className={`cursor-pointer ${
-              uploading ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'
-            }`}
-          >
-            {uploading ? 'Processing...' : 'Upload my own runbooks'}
-          </label>
-        )}
-        {status && (
-          <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
-            {status}
-          </div>
-        )}
-      </div>
+      {!demoOnly && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className={`border-2 border-dashed rounded-lg p-8 text-center ${
+            blobAvailable === false 
+              ? 'border-gray-200 bg-gray-50' 
+              : 'border-gray-300'
+          }`}
+        >
+          <input
+            type="file"
+            accept=".pdf,.md,.markdown"
+            onChange={handleFileSelect}
+            disabled={uploading || blobAvailable === false}
+            multiple
+            className="hidden"
+            id="file-input"
+          />
+          {blobAvailable === false ? (
+            <div className="text-sm text-gray-600">
+              Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.
+            </div>
+          ) : (
+            <label
+              htmlFor="file-input"
+              className={`cursor-pointer ${
+                uploading ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'
+              }`}
+            >
+              {uploading ? 'Processing...' : 'Upload my own runbooks'}
+            </label>
+          )}
+          {status && (
+            <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
+              {status}
+            </div>
+          )}
+        </div>
+      )}
+      {status && demoOnly && (
+        <div className={`text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
+          {status}
+        </div>
+      )}
     </div>
   );
 }

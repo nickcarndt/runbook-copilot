@@ -8,12 +8,12 @@ const requestSchema = z.object({
   blobUrls: z.array(z.string().url()).min(1).max(10), // Max 10 files
 });
 
-// Demo safety gate
-function checkDemoToken(request: NextRequest): boolean {
-  const demoToken = process.env.RBC_DEMO_TOKEN;
-  if (!demoToken) return true;
-  const headerToken = request.headers.get('x-rbc-token');
-  return headerToken === demoToken;
+// Upload token gate
+function checkUploadToken(request: NextRequest): boolean {
+  const uploadToken = process.env.UPLOAD_TOKEN;
+  if (!uploadToken) return false; // Require token if set
+  const headerToken = request.headers.get('x-upload-token');
+  return headerToken === uploadToken;
 }
 
 // Limits
@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Demo safety gate
-    if (!checkDemoToken(request)) {
+    // Upload token gate
+    if (!checkUploadToken(request)) {
       const latency = Date.now() - startTime;
       try {
         await logUpload(requestId, latency, 'error', 'Unauthorized');
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           request_id: requestId,
-          error: { message: 'Unauthorized', code: 'UNAUTHORIZED' },
+          error: { message: 'Unauthorized', code: 'UPLOAD_LOCKED' },
           latency_ms: latency,
         },
         { status: 401 }

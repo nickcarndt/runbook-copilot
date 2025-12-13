@@ -3,14 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logUpload, query } from '@/lib/db';
 import { demoRunbooks } from '@/lib/demo-runbooks';
 import { extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
-
-// Demo safety gate
-function checkDemoToken(request: NextRequest): boolean {
-  const demoToken = process.env.RBC_DEMO_TOKEN;
-  if (!demoToken) return true;
-  const headerToken = request.headers.get('x-rbc-token');
-  return headerToken === demoToken;
-}
+import { checkRateLimit, getClientIP } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -44,17 +37,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Demo safety gate
-    if (!checkDemoToken(request)) {
+    // Rate limiting (public endpoint)
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(clientIP, 10, 60 * 1000); // 10 requests per minute
+    if (!rateLimit.allowed) {
       const latency = Date.now() - startTime;
-      await logUpload(requestId, latency, 'error', 'Unauthorized');
+      await logUpload(requestId, latency, 'error', 'Rate limit exceeded');
       return NextResponse.json(
         {
           request_id: requestId,
-          error: { message: 'Unauthorized', code: 'UNAUTHORIZED' },
+          error: { message: 'Rate limit exceeded. Please try again later.', code: 'RATE_LIMIT' },
           latency_ms: latency,
         },
-        { status: 401 }
+        { status: 429 }
       );
     }
 

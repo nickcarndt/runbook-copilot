@@ -9,7 +9,7 @@ interface Source {
 }
 
 interface ChatProps {
-  onSourcesUpdate?: (sources: Source[], requestId: string, latency: number) => void;
+  onSourcesUpdate?: (sources: Source[], requestId: string, latency: number, error?: { message: string; code?: string }) => void;
   onAnswerComplete?: (question: string, answer: string) => void;
 }
 
@@ -38,10 +38,33 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete }: ChatProps) {
         body: JSON.stringify({ message: question }),
       });
 
-      if (!response.body) throw new Error('No response body');
-
       const requestId = response.headers.get('X-Request-ID') || '';
       setCurrentRequestId(requestId);
+
+      // Handle non-200 responses
+      if (!response.ok) {
+        let errorMessage = 'Failed to get response';
+        let errorCode = 'UNKNOWN';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error?.message || errorData.error || errorMessage;
+          errorCode = errorData.error?.code || errorCode;
+          if (onSourcesUpdate) {
+            onSourcesUpdate([], requestId || '', Date.now() - startTime, { message: errorMessage, code: errorCode });
+          }
+        } catch (e) {
+          // If JSON parsing fails, use status text
+          errorMessage = `${response.status} ${response.statusText}`;
+          if (onSourcesUpdate) {
+            onSourcesUpdate([], requestId || '', Date.now() - startTime, { message: errorMessage, code: String(response.status) });
+          }
+        }
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMessage}` }]);
+        setLoading(false);
+        return;
+      }
+
+      if (!response.body) throw new Error('No response body');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

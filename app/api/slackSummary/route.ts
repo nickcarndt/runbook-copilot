@@ -2,20 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { logQuery } from '@/lib/db';
+import { checkRateLimit, getClientIP } from '@/lib/rateLimit';
 import OpenAI from 'openai';
 
 const requestSchema = z.object({
   question: z.string().min(1),
   answer: z.string().min(1),
 });
-
-// Demo safety gate
-function checkDemoToken(request: NextRequest): boolean {
-  const demoToken = process.env.RBC_DEMO_TOKEN;
-  if (!demoToken) return true;
-  const headerToken = request.headers.get('x-rbc-token');
-  return headerToken === demoToken;
-}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -51,12 +44,19 @@ export async function POST(request: NextRequest) {
   const requestId = uuidv4();
 
   try {
-    // Demo safety gate
-    if (!checkDemoToken(request)) {
-      await logQuery(requestId, Date.now() - startTime, 'error', JSON.stringify({ type: 'slack_summary', error: 'Unauthorized' }));
+    // Rate limiting
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(clientIP, 10, 60 * 1000); // 10 requests per minute
+    if (!rateLimit.allowed) {
+      const latency = Date.now() - startTime;
+      await logQuery(requestId, latency, 'error', JSON.stringify({ type: 'slack_summary', error: 'Rate limit exceeded' }));
       return NextResponse.json(
-        { error: 'Unauthorized', request_id: requestId },
-        { status: 401 }
+        {
+          request_id: requestId,
+          error: { message: 'Rate limit exceeded. Please try again later.', code: 'RATE_LIMIT' },
+          latency_ms: latency,
+        },
+        { status: 429 }
       );
     }
 
@@ -93,14 +93,28 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Invalid request body', details: error.errors, request_id: requestId },
-        { status: 400 }
+        { 
+          request_id: requestId,
+          error: { message: 'Invalid request body', code: 'VALIDATION_ERROR' },
+          latency_ms: latency,
+        },
+        { 
+          status: 400,
+          headers: { 'X-Request-ID': requestId },
+        }
       );
     }
 
     return NextResponse.json(
-      { error: errorMessage, request_id: requestId },
-      { status: 500 }
+      { 
+        request_id: requestId,
+        error: { message: errorMessage, code: 'INTERNAL_ERROR' },
+        latency_ms: latency,
+      },
+      { 
+        status: 500,
+        headers: { 'X-Request-ID': requestId },
+      }
     );
   }
 }

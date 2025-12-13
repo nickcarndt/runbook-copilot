@@ -4,19 +4,11 @@ import { z } from 'zod';
 import { runbookAgent } from '@/lib/agents';
 import { logQuery } from '@/lib/db';
 import { agentStreamEvent, agentToolCallEvent } from '@llamaindex/workflow';
+import { checkRateLimit, getClientIP } from '@/lib/rateLimit';
 
 const requestSchema = z.object({
   message: z.string().min(1),
 });
-
-// Demo safety gate
-function checkDemoToken(request: NextRequest): boolean {
-  const demoToken = process.env.RBC_DEMO_TOKEN;
-  if (!demoToken) return true; // No token set, allow all
-  
-  const headerToken = request.headers.get('x-rbc-token');
-  return headerToken === demoToken;
-}
 
 export const runtime = 'nodejs';
 
@@ -25,12 +17,19 @@ export async function POST(request: NextRequest) {
   const requestId = uuidv4();
 
   try {
-    // Demo safety gate
-    if (!checkDemoToken(request)) {
-      await logQuery(requestId, Date.now() - startTime, 'error', 'Unauthorized');
+    // Rate limiting
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(clientIP, 10, 60 * 1000); // 10 requests per minute
+    if (!rateLimit.allowed) {
+      const latency = Date.now() - startTime;
+      await logQuery(requestId, latency, 'error', 'Rate limit exceeded');
       return NextResponse.json(
-        { error: 'Unauthorized', request_id: requestId },
-        { status: 401 }
+        {
+          request_id: requestId,
+          error: { message: 'Rate limit exceeded. Please try again later.', code: 'RATE_LIMIT' },
+          latency_ms: latency,
+        },
+        { status: 429 }
       );
     }
 
@@ -119,14 +118,28 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Invalid request body', details: error.errors, request_id: requestId },
-        { status: 400 }
+        { 
+          request_id: requestId,
+          error: { message: 'Invalid request body', code: 'VALIDATION_ERROR' },
+          latency_ms: latency,
+        },
+        { 
+          status: 400,
+          headers: { 'X-Request-ID': requestId },
+        }
       );
     }
 
     return NextResponse.json(
-      { error: errorMessage, request_id: requestId },
-      { status: 500 }
+      { 
+        request_id: requestId,
+        error: { message: errorMessage, code: 'INTERNAL_ERROR' },
+        latency_ms: latency,
+      },
+      { 
+        status: 500,
+        headers: { 'X-Request-ID': requestId },
+      }
     );
   }
 }

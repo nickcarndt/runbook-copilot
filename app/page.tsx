@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Chat from '@/components/Chat';
 import FileDropzone from '@/components/FileDropzone';
 import { demoRunbooks } from '@/lib/demo-runbooks';
@@ -26,10 +26,26 @@ export default function Home() {
   const [lastQuestion, setLastQuestion] = useState<string>('');
   const [lastAnswer, setLastAnswer] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [publicDemo, setPublicDemo] = useState(false);
+  const [errorRequestId, setErrorRequestId] = useState<string>('');
 
-  const handleSourcesUpdate = (newSources: Source[], requestId: string, latency: number) => {
+  useEffect(() => {
+    // Fetch public demo config
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => setPublicDemo(data.publicDemo || false))
+      .catch(() => {});
+  }, []);
+
+  const handleSourcesUpdate = (newSources: Source[], requestId: string, latency: number, error?: { message: string; code?: string }) => {
     setSources(newSources);
-    setDebugInfo({ requestId, latency, sources: newSources });
+    if (error) {
+      setErrorRequestId(requestId);
+      setDebugInfo({ requestId, latency, sources: newSources });
+    } else {
+      setErrorRequestId('');
+      setDebugInfo({ requestId, latency, sources: newSources });
+    }
   };
 
   const handleAnswerComplete = (question: string, answer: string) => {
@@ -54,11 +70,19 @@ export default function Home() {
       const data = await response.json();
       if (response.ok) {
         setSlackSummary(data.summary);
+        if (data.request_id) {
+          setErrorRequestId(data.request_id);
+        }
       } else {
-        setSlackSummary(`Error: ${data.error || 'Failed to generate summary'}`);
+        const errorMsg = data.error?.message || data.error || 'Failed to generate summary';
+        setSlackSummary(`Error: ${errorMsg}`);
+        if (data.request_id) {
+          setErrorRequestId(data.request_id);
+        }
       }
     } catch (error) {
-      setSlackSummary(`Error: ${error instanceof Error ? error.message : 'Failed to generate summary'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to generate summary';
+      setSlackSummary(`Error: ${errorMsg}`);
     } finally {
       setSlackLoading(false);
     }
@@ -76,10 +100,16 @@ export default function Home() {
     <div className="min-h-screen p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-8">Runbook Copilot</h1>
 
+      {publicDemo && (
+        <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded text-sm text-yellow-800">
+          Public demo — do not upload sensitive data.
+        </div>
+      )}
+
       {/* Upload Section */}
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Upload</h2>
-        <FileDropzone onDemoRunbooksLoad={() => {}} />
+        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} />
       </section>
 
       {/* Chat Section */}
@@ -148,7 +178,7 @@ export default function Home() {
             <div className="bg-gray-100 p-4 rounded-t border border-gray-300 max-h-96 overflow-auto w-96">
               <div className="space-y-2 text-xs">
                 <div>
-                  <span className="font-semibold">Request ID:</span> {debugInfo.requestId}
+                  <span className="font-semibold">Request ID:</span> {errorRequestId || debugInfo.requestId}
                 </div>
                 <div>
                   <span className="font-semibold">Latency:</span> {debugInfo.latency}ms
