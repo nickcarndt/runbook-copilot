@@ -5,7 +5,7 @@ import { put } from '@vercel/blob';
 
 interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
-  demoOnly?: boolean; // When true, hides upload UI (for public demos)
+  demoOnly?: boolean; // When true, shows upload UI in locked state (for public demos)
 }
 
 // Helper to safely parse response
@@ -26,12 +26,33 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [blobAvailable, setBlobAvailable] = useState<boolean | null>(null);
+  const [uploadCode, setUploadCode] = useState<string>('');
+
+  // Load upload code from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('rbc_upload_token');
+    if (stored) {
+      setUploadCode(stored);
+    }
+  }, []);
+
+  // Save upload code to localStorage when changed
+  useEffect(() => {
+    if (uploadCode) {
+      localStorage.setItem('rbc_upload_token', uploadCode);
+    } else {
+      localStorage.removeItem('rbc_upload_token');
+    }
+  }, [uploadCode]);
 
   // Check if Blob is available (we'll detect this on first upload attempt)
   useEffect(() => {
     // We can't check env vars on client, so we'll detect on first use
     setBlobAvailable(null);
   }, []);
+
+  // Check if uploads are enabled
+  const uploadsEnabled = !demoOnly || !!uploadCode;
 
   const handleUseDemoRunbooks = async () => {
     setUploading(true);
@@ -68,11 +89,13 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
+    if (!uploadsEnabled) return;
     const files = Array.from(e.dataTransfer.files) as File[];
     await uploadFiles(files);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!uploadsEnabled) return;
     const files = Array.from(e.target.files || []) as File[];
     await uploadFiles(files);
   };
@@ -121,10 +144,16 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       setBlobAvailable(true);
       setStatus('Processing files...');
 
+      // Build headers - include upload token if present
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (uploadCode) {
+        headers['x-upload-token'] = uploadCode;
+      }
+
       // Send blob URLs to server for processing
       const response = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ blobUrls }),
       });
 
@@ -170,54 +199,71 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         >
           Use demo runbooks
         </button>
-        {!demoOnly && <div className="text-sm text-gray-600 self-center">or</div>}
+        <div className="text-sm text-gray-600 self-center">or</div>
       </div>
 
-      {!demoOnly && (
-        <div
-          onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center ${
-            blobAvailable === false 
-              ? 'border-gray-200 bg-gray-50' 
-              : 'border-gray-300'
-          }`}
-        >
+      {/* Upload code input for public demo */}
+      {demoOnly && (
+        <div className="border rounded-lg p-4 bg-gray-50">
+          <label className="block text-sm font-medium mb-2">Upload Code</label>
           <input
-            type="file"
-            accept=".pdf,.md,.markdown"
-            onChange={handleFileSelect}
-            disabled={uploading || blobAvailable === false}
-            multiple
-            className="hidden"
-            id="file-input"
+            type="text"
+            value={uploadCode}
+            onChange={(e) => setUploadCode(e.target.value)}
+            placeholder="Enter upload code"
+            className="w-full border rounded px-3 py-2 text-sm"
           />
-          {blobAvailable === false ? (
-            <div className="text-sm text-gray-600">
-              Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.
-            </div>
-          ) : (
-            <label
-              htmlFor="file-input"
-              className={`cursor-pointer ${
-                uploading ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'
-              }`}
-            >
-              {uploading ? 'Processing...' : 'Upload my own runbooks'}
-            </label>
-          )}
-          {status && (
-            <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
-              {status}
-            </div>
+          {!uploadCode && (
+            <p className="mt-2 text-sm text-gray-600">
+              Uploads are locked for the public demo. Ask Nick for an upload code.
+            </p>
           )}
         </div>
       )}
-      {status && demoOnly && (
-        <div className={`text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
-          {status}
-        </div>
-      )}
+
+      {/* Upload dropzone - always shown */}
+      <div
+        onDrop={uploadsEnabled ? handleDrop : (e) => e.preventDefault()}
+        onDragOver={(e) => e.preventDefault()}
+        className={`border-2 border-dashed rounded-lg p-8 text-center ${
+          !uploadsEnabled || blobAvailable === false
+            ? 'border-gray-200 bg-gray-50 opacity-60'
+            : 'border-gray-300'
+        }`}
+      >
+        <input
+          type="file"
+          accept=".pdf,.md,.markdown"
+          onChange={handleFileSelect}
+          disabled={uploading || !uploadsEnabled || blobAvailable === false}
+          multiple
+          className="hidden"
+          id="file-input"
+        />
+        {blobAvailable === false ? (
+          <div className="text-sm text-gray-600">
+            Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.
+          </div>
+        ) : !uploadsEnabled ? (
+          <div className="text-sm text-gray-600">
+            Uploads are locked for the public demo. Ask Nick for an upload code.
+          </div>
+        ) : (
+          <label
+            htmlFor="file-input"
+            className={`cursor-pointer ${
+              uploading ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'
+            }`}
+          >
+            {uploading ? 'Processing...' : 'Upload my own runbooks'}
+          </label>
+        )}
+        {status && (
+          <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
+            {status}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
