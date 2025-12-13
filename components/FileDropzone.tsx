@@ -31,22 +31,42 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   const [showUploadCode, setShowUploadCode] = useState(false);
   const [uploadAuth, setUploadAuth] = useState<UploadAuthState>(demoOnly ? 'locked' : 'unlocked');
 
-  // Load upload code and verify on mount if token exists
-  // Never trust localStorage verified flag alone - always verify with server
+  // Load upload code and verify on mount
+  // Only unlock if BOTH token exists AND verified flag is true
+  // Auto-clean stale verified flags if token is missing
   useEffect(() => {
     if (!demoOnly) return;
     
     const stored = localStorage.getItem('rbc_upload_token') ?? '';
+    const verified = localStorage.getItem('rbc_upload_verified') === 'true';
     const hasToken = !!stored.trim();
     
-    if (!hasToken) {
-      // No token - must be locked
-      setUploadAuth('locked');
+    // Auto-clean: if verified flag exists but token is missing/blank, remove both
+    if (verified && !hasToken) {
+      console.log('[FileDropzone] Auto-cleaning stale verified flag (token missing)');
       localStorage.removeItem('rbc_upload_verified');
+      localStorage.removeItem('rbc_upload_token');
+      setUploadAuth('locked');
+      setUploadCode('');
       return;
     }
     
-    // Token exists - load it and verify with server
+    // Only unlock if BOTH token and verified exist
+    if (!hasToken || !verified) {
+      // Missing either - must be locked
+      setUploadAuth('locked');
+      if (!hasToken) {
+        localStorage.removeItem('rbc_upload_verified');
+        localStorage.removeItem('rbc_upload_token');
+      }
+      if (hasToken) {
+        // Token exists but not verified - load it but keep locked
+        setUploadCode(stored);
+      }
+      return;
+    }
+    
+    // Both exist - load token and verify with server to confirm it's still valid
     setUploadCode(stored);
     setUploadAuth('checking');
     
@@ -65,6 +85,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
             setUploadAuth('unlocked');
             localStorage.setItem('rbc_upload_verified', 'true');
           } else {
+            // Verification failed - lock and clean
             setUploadAuth('locked');
             localStorage.removeItem('rbc_upload_verified');
             localStorage.removeItem('rbc_upload_token');
@@ -298,7 +319,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
             localStorage.removeItem('rbc_upload_token');
             setUploadCode('');
           }
-          setStatus(`Uploads are locked. Request ID: ${requestId}`);
+          setStatus(`Upload failed: Authentication required. Request ID: ${requestId}`);
         } else {
           setStatus(`Error: ${errorMessage} (Request ID: ${requestId})`);
         }
@@ -314,7 +335,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       // Add verification status
       if (data.verified_searchable === true && data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
         const firstResult = data.top_retrieval_preview[0];
-        successMsg += ` Verified searchable: "${firstResult.textPreview}" (from ${firstResult.filename})`;
+        // Truncate preview to 120-160 chars and replace newlines with spaces
+        let preview = firstResult.textPreview.replace(/\s+/g, ' ').trim();
+        if (preview.length > 140) {
+          preview = preview.substring(0, 140) + '...';
+        }
+        successMsg += ` Verified searchable: "${preview}" (from ${firstResult.filename})`;
       } else if (data.verified_searchable === false) {
         successMsg += ` (Search verification pending - content may not be immediately searchable)`;
       }
@@ -399,6 +425,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
               {uploadAuth === 'checking' ? 'Verifying...' : uploadAuth === 'unlocked' ? 'Verified' : 'Unlock uploads'}
             </button>
           </div>
+          {/* Only show "Uploads unlocked" if verified in this session (unlocked state set by successful verify) */}
           {uploadAuth === 'unlocked' && hasToken && (
             <p className="mt-2 text-sm text-green-600">
               ✓ Uploads unlocked
@@ -469,10 +496,6 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         ) : null}
       </div>
 
-      {/* Temporary debug line */}
-      <pre className="text-[10px] opacity-60 mt-2">
-        uploading={String(uploading)} auth={uploadAuth} hasStatus={String(!!status)} statusLength={status.length}
-      </pre>
     </div>
   );
 }
