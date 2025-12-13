@@ -557,7 +557,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </div>
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 flex-shrink-0"
+                className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 flex-shrink-0 transition-colors"
                 type="button"
                 aria-expanded={showDetails}
                 aria-label={showDetails ? 'Hide details' : 'Show details'}
@@ -566,7 +566,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </button>
             </div>
             {showDetails && (
-              <div className="mt-3 pt-3 border-t border-green-200 space-y-3 text-xs">
+              <div className="mt-3 pt-3 border-t border-green-200 space-y-3 text-xs max-h-[60vh] overflow-y-auto">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-medium">Request ID:</span> <span className="font-mono text-gray-700">{uploadSuccessData.requestId}</span>
@@ -600,7 +600,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       setCopiedDetails(true);
                       setTimeout(() => setCopiedDetails(false), 1200);
                     }}
-                    className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
+                    className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 transition-colors"
                     type="button"
                   >
                     {copiedDetails ? 'Copied!' : 'Copy details'}
@@ -640,10 +640,11 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                 <div
                                   id="tooltip-similarity-0"
                                   role="tooltip"
-                                  className="absolute left-0 bottom-full mb-2 z-10 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
+                                  className="absolute right-0 bottom-full mb-3 z-20 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
+                                  style={{ transform: 'translateX(0)' }}
                                 >
                                   Derived from cosine distance (pgvector &lt;=&gt;).
-                                  <div className="absolute top-full left-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                  <div className="absolute top-full right-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
                                 </div>
                               )}
                             </div>
@@ -664,7 +665,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                               setShowAdvanced(false);
                             }
                           }}
-                          className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
+                          className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 transition-colors"
                           type="button"
                           aria-expanded={showMorePreviews}
                           aria-label={showMorePreviews ? 'Show less previews' : `Show ${uploadSuccessData.topRetrievalPreview.length - 1} more preview${uploadSuccessData.topRetrievalPreview.length - 1 > 1 ? 's' : ''}`}
@@ -704,10 +705,11 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                   <div
                                     id={`tooltip-similarity-${i + 1}`}
                                     role="tooltip"
-                                    className="absolute left-0 bottom-full mb-2 z-10 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
+                                    className="absolute right-0 bottom-full mb-3 z-20 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
+                                    style={{ transform: 'translateX(0)' }}
                                   >
                                     Derived from cosine distance (pgvector &lt;=&gt;).
-                                    <div className="absolute top-full left-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                    <div className="absolute top-full right-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
                                   </div>
                                 )}
                               </div>
@@ -723,7 +725,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
-                          className="text-gray-600 hover:text-gray-800 underline text-xs focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 rounded px-1"
+                          className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 transition-colors"
                           type="button"
                           aria-expanded={showAdvanced}
                           aria-label={showAdvanced ? 'Hide scoring metrics' : 'Show scoring metrics'}
