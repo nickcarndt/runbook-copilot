@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Buffer } from 'buffer';
 import { logUpload } from '@/lib/db';
 import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
+import { searchRunbooks } from '@/lib/agents';
 import { put } from '@vercel/blob';
 
 // Upload token gate
@@ -266,6 +267,28 @@ export async function POST(request: NextRequest) {
 
     const latency = Date.now() - startTime;
     const totalChunks = processedFiles.reduce((sum, f) => sum + f.chunks, 0);
+    const insertedFilenames = processedFiles.map(f => f.filename);
+
+    // Run a test query to verify the content is searchable
+    let topRetrievalPreview: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }> | null = null;
+    try {
+      // Use a simple generic query that should match any runbook content
+      const testQuery = processedFiles.length > 0 
+        ? `runbook ${processedFiles[0].filename.split('.')[0]}` // Use first filename as part of query
+        : 'runbook documentation';
+      
+      const testResults = await searchRunbooks(testQuery, 3); // Get top 3 results
+      topRetrievalPreview = testResults.map(result => ({
+        filename: result.filename,
+        chunkIndex: result.chunkIndex,
+        textPreview: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : ''),
+        distance: result.distance,
+        keywordScore: result.keywordScore,
+      }));
+    } catch (retrievalError) {
+      // Log but don't fail - retrieval preview is optional
+      console.warn('Failed to generate retrieval preview:', retrievalError);
+    }
 
     // Log success
     try {
@@ -284,6 +307,8 @@ export async function POST(request: NextRequest) {
       latency_ms: latency,
       files_processed: processedFiles.length,
       total_chunks: totalChunks,
+      inserted_filenames: insertedFilenames,
+      top_retrieval_preview: topRetrievalPreview,
       files: processedFiles,
     });
   } catch (error) {

@@ -19,7 +19,7 @@ function computeKeywordScore(text: string, keywords: string[]): number {
 }
 
 // Vector search in Postgres with hybrid reranking
-async function searchRunbooks(queryText: string, topK: number = 5): Promise<Array<{ id: string; text: string; filename: string; chunkIndex: number; distance?: number; keywordScore?: number }>> {
+export async function searchRunbooks(queryText: string, topK: number = 5): Promise<Array<{ id: string; text: string; filename: string; chunkIndex: number; distance?: number; keywordScore?: number }>> {
   try {
     // Create embedding for query
     const queryEmbedding = await createEmbedding(queryText);

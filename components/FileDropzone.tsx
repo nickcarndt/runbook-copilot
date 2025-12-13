@@ -183,10 +183,18 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       const data = await parseResponse(response);
       
       if (response.ok) {
-        setStatus(
-          `Success! Processed ${data.files_processed} file(s), ` +
-          `${data.total_chunks} chunks. Request ID: ${data.request_id}`
-        );
+        // Build success message with inserted filenames
+        let successMsg = `Success! Indexed ${data.inserted_filenames?.length || data.files_processed || 0} file(s): ${(data.inserted_filenames || []).join(', ')}. `;
+        successMsg += `${data.total_chunks || 0} chunks created.`;
+        
+        // Add retrieval preview if available
+        if (data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
+          const firstResult = data.top_retrieval_preview[0];
+          successMsg += ` Verified searchable: "${firstResult.textPreview}" (from ${firstResult.filename})`;
+        }
+        
+        successMsg += ` Request ID: ${data.request_id}`;
+        setStatus(successMsg);
       } else {
         const errorCode = data.error?.code || '';
         if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED' || errorCode === 'INVALID_UPLOAD_CODE')) {
