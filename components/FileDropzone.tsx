@@ -244,9 +244,17 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
 
     console.log('[FileDropzone] Setting uploading=true, status="Uploading..."');
     // Clear previous status only when starting a new upload
+    // Clear previous status and success data when starting a new upload
     setStatus('');
+    setUploadSuccessData(null);
+    setShowDetails(false);
     setUploading(true);
     setStatus('Uploading and processing files...');
+    
+    // Notify parent that upload started (to clear suggested questions)
+    if (onUploadStart) {
+      onUploadStart();
+    }
 
     try {
       // Build FormData with files
