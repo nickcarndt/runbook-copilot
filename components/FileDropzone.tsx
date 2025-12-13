@@ -582,7 +582,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </button>
             </div>
             {showDetails && (
-              <div className="mt-3 pt-3 border-t border-green-200 bg-white rounded border border-gray-200 p-3 space-y-3 text-xs max-h-[60vh] overflow-y-auto">
+              <div className="mt-3 pt-3 border-t border-gray-200 bg-white rounded border border-gray-200 p-3 space-y-3 text-xs max-h-[60vh] overflow-y-auto">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-medium">Request ID:</span> <span className="font-mono text-gray-700">{uploadSuccessData.requestId}</span>
@@ -626,7 +626,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                   <div>
                     <div className="space-y-2">
                       {/* Show first preview always */}
-                      <div className="bg-white p-2.5 rounded border border-green-200">
+                      <div className="bg-white p-2.5 rounded border border-gray-200">
                         <div className="font-medium text-gray-800 mb-1">
                           {uploadSuccessData.topRetrievalPreview[0].filename} (chunk {uploadSuccessData.topRetrievalPreview[0].chunkIndex})
                         </div>
