@@ -32,10 +32,24 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   const [uploadAuth, setUploadAuth] = useState<UploadAuthState>(demoOnly ? 'locked' : 'unlocked');
 
   // Load upload code and verified state from localStorage
+  // Only unlock if we have BOTH a non-empty token AND verified flag
   useEffect(() => {
-    const stored = localStorage.getItem('rbc_upload_token');
+    if (!demoOnly) return;
+    
+    const stored = localStorage.getItem('rbc_upload_token') ?? '';
     const verified = localStorage.getItem('rbc_upload_verified') === 'true';
-    if (stored && verified && demoOnly) {
+    const hasToken = !!stored.trim();
+    
+    // Reset stale verified flags if token is missing or empty
+    if (!hasToken || !verified) {
+      localStorage.removeItem('rbc_upload_verified');
+      setUploadAuth('locked');
+      if (hasToken) {
+        // Token exists but not verified - load it into input but keep locked
+        setUploadCode(stored);
+      }
+    } else {
+      // Both token and verified exist - unlock
       setUploadCode(stored);
       setUploadAuth('unlocked');
     }
@@ -86,7 +100,9 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   };
 
   // Check if uploads are enabled
-  const uploadsEnabled = !demoOnly || uploadAuth === 'unlocked';
+  // Require BOTH verified status AND non-empty token
+  const hasToken = !!uploadCode?.trim();
+  const uploadsEnabled = !demoOnly || (uploadAuth === 'unlocked' && hasToken);
 
   // Clear upload status when uploads become locked (to avoid showing stale success messages)
   useEffect(() => {
@@ -259,13 +275,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
               onChange={(e) => {
                 const newCode = e.target.value;
                 setUploadCode(newCode);
-                // Reset to locked/invalid when code changes (don't verify on keystroke)
-                if (uploadAuth === 'unlocked' || uploadAuth === 'invalid') {
-                  setUploadAuth('locked');
-                  localStorage.removeItem('rbc_upload_verified');
-                  if (!newCode.trim()) {
-                    localStorage.removeItem('rbc_upload_token');
-                  }
+                // Always reset to locked when code changes - require re-verification
+                setUploadAuth('locked');
+                localStorage.removeItem('rbc_upload_verified');
+                // Only clear token if input is empty
+                if (!newCode.trim()) {
+                  localStorage.removeItem('rbc_upload_token');
+                } else {
+                  // Save token as user types (but don't unlock until verified)
+                  localStorage.setItem('rbc_upload_token', newCode);
                 }
               }}
                 placeholder="Enter upload code"
@@ -285,10 +303,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
               disabled={!uploadCode.trim() || uploadAuth === 'checking' || uploadAuth === 'unlocked'}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 text-sm whitespace-nowrap"
             >
-              {uploadAuth === 'checking' ? 'Verifying...' : uploadAuth === 'unlocked' ? 'Unlocked' : 'Unlock uploads'}
+              {uploadAuth === 'checking' ? 'Verifying...' : uploadAuth === 'unlocked' ? 'Verified' : 'Unlock uploads'}
             </button>
           </div>
-          {uploadAuth === 'unlocked' && (
+          {uploadAuth === 'unlocked' && hasToken && (
             <p className="mt-2 text-sm text-green-600">
               ✓ Uploads unlocked
             </p>
