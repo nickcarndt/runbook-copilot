@@ -55,6 +55,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [uploadAuth, setUploadAuth] = useState<UploadAuthState>(demoOnly ? 'locked' : 'unlocked');
   const [uploadSuccessData, setUploadSuccessData] = useState<UploadSuccessData | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showMorePreviews, setShowMorePreviews] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Load upload code and verify on mount
   // Only unlock if BOTH token exists AND verified flag is true
@@ -261,6 +263,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
     setStatus('');
     setUploadSuccessData(null);
     setShowDetails(false);
+    setShowMorePreviews(false);
+    setShowAdvanced(false);
     setUploading(true);
     setStatus('Uploading and processing files...');
     
@@ -550,45 +554,80 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </button>
             </div>
             {showDetails && (
-              <div className="mt-3 pt-3 border-t border-green-200 space-y-2 text-xs">
+              <div className="mt-3 pt-3 border-t border-green-200 space-y-3 text-xs">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="font-medium">Request ID:</span> {uploadSuccessData.requestId}
+                    <span className="font-medium">Request ID:</span> <span className="font-mono text-gray-700">{uploadSuccessData.requestId}</span>
                   </div>
                   <button
                     onClick={async () => {
-                      await navigator.clipboard.writeText(uploadSuccessData.requestId);
+                      // Copy details: filename, chunks, request_id, and preview snippets
+                      const previews = showMorePreviews 
+                        ? uploadSuccessData.topRetrievalPreview || []
+                        : uploadSuccessData.topRetrievalPreview?.slice(0, 1) || [];
+                      
+                      const details = [
+                        `Filename: ${uploadSuccessData.filenames.join(', ')}`,
+                        `Chunks: ${uploadSuccessData.chunks}`,
+                        `Request ID: ${uploadSuccessData.requestId}`,
+                        '',
+                        'Retrieval preview:',
+                        ...previews.map((r, i) => `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`),
+                      ].join('\n');
+                      
+                      await navigator.clipboard.writeText(details);
                     }}
                     className="text-green-700 hover:text-green-900 underline text-xs"
                   >
-                    Copy
+                    Copy details
                   </button>
                 </div>
                 {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium">Retrieval preview:</span>
-                    </div>
-                    <div className="mt-1 space-y-1">
-                      {uploadSuccessData.topRetrievalPreview.map((result, i) => (
-                        <div key={i} className="bg-white p-2 rounded border border-green-200">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="font-medium">{result.filename} (chunk {result.chunkIndex})</div>
-                            <button
-                              onClick={async () => {
-                                await navigator.clipboard.writeText(result.textPreview);
-                              }}
-                              className="text-green-700 hover:text-green-900 underline text-xs"
-                            >
-                              Copy
-                            </button>
+                    <div className="font-medium mb-2">Retrieval preview:</div>
+                    <div className="space-y-2">
+                      {/* Show first preview always */}
+                      <div className="bg-white p-2.5 rounded border border-green-200">
+                        <div className="font-medium text-gray-800 mb-1">
+                          {uploadSuccessData.topRetrievalPreview[0].filename} (chunk {uploadSuccessData.topRetrievalPreview[0].chunkIndex})
+                        </div>
+                        <div className="text-gray-700 mt-1 leading-relaxed">{uploadSuccessData.topRetrievalPreview[0].textPreview}</div>
+                      </div>
+                      
+                      {/* Show "Show more" link if there are more previews */}
+                      {uploadSuccessData.topRetrievalPreview.length > 1 && !showMorePreviews && (
+                        <button
+                          onClick={() => setShowMorePreviews(true)}
+                          className="text-green-700 hover:text-green-900 underline text-xs"
+                        >
+                          Show more ({uploadSuccessData.topRetrievalPreview.length - 1})
+                        </button>
+                      )}
+                      
+                      {/* Show remaining previews when expanded */}
+                      {showMorePreviews && uploadSuccessData.topRetrievalPreview.slice(1).map((result, i) => (
+                        <div key={i + 1} className="bg-white p-2.5 rounded border border-green-200">
+                          <div className="font-medium text-gray-800 mb-1">
+                            {result.filename} (chunk {result.chunkIndex})
                           </div>
-                          <div className="text-gray-600 mt-1">{result.textPreview}</div>
-                          {result.distance !== undefined && (
-                            <div className="text-gray-500 text-xs mt-1">Distance: {result.distance.toFixed(4)}</div>
+                          <div className="text-gray-700 mt-1 leading-relaxed">{result.textPreview}</div>
+                          {showAdvanced && result.distance !== undefined && (
+                            <div className="text-gray-500 text-xs mt-1.5">
+                              Relevance: {(1 - result.distance).toFixed(2)}
+                            </div>
                           )}
                         </div>
                       ))}
+                      
+                      {/* Advanced toggle (only show when "Show more" is expanded) */}
+                      {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
+                        <button
+                          onClick={() => setShowAdvanced(!showAdvanced)}
+                          className="text-gray-600 hover:text-gray-800 underline text-xs"
+                        >
+                          {showAdvanced ? 'Hide' : 'Show'} advanced
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
