@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { Buffer } from 'buffer';
 import { logUpload } from '@/lib/db';
 import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
 import { put } from '@vercel/blob';
@@ -18,6 +19,7 @@ const MAX_TOTAL_SIZE_MB = 100;
 const MAX_TOTAL_SIZE_BYTES = MAX_TOTAL_SIZE_MB * 1024 * 1024;
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -163,17 +165,17 @@ export async function POST(request: NextRequest) {
           throw new Error(`Unsupported file type: ${filename}`);
         }
 
-        // Read file into buffer with validation
+        // Read file into buffer with validation (must use arrayBuffer() with parentheses)
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         
         // Validate buffer is not empty
-        if (!buffer.length) {
-          throw new Error(`Empty upload: ${filename} (file.size: ${file.size}, buffer.length: ${buffer.length})`);
+        if (!buffer || buffer.length === 0) {
+          throw new Error(`Empty PDF buffer (file=${file.name}, size=${file.size}, buffer_len=${buffer?.length || 'undefined'}, buffer_type=${typeof buffer}, buffer_constructor=${buffer?.constructor?.name || 'undefined'})`);
         }
         
-        // Debug log (include in error if needed)
-        console.log(`Processing file: ${filename}, type: ${file.type}, size: ${file.size}, buffer.length: ${buffer.length}`);
+        // Debug log with type information
+        console.log(`Processing file: ${filename}, type: ${file.type}, size: ${file.size}, buffer.length: ${buffer.length}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer.constructor.name}`);
         
         totalSize += buffer.length;
 

@@ -8,27 +8,37 @@ const openai = new OpenAI({
 // Extract text from PDF buffer
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   // Validate buffer is present and not empty
-  if (!buffer || !buffer.length) {
-    throw new Error(`PDF buffer is empty or undefined (buffer.length: ${buffer?.length || 'undefined'})`);
+  if (!buffer || buffer.length === 0) {
+    throw new Error(`PDF buffer is empty or undefined (buffer.length: ${buffer?.length || 'undefined'}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer?.constructor?.name || 'undefined'})`);
   }
   
   // Validate PDF header
-  const header = buffer.slice(0, 4).toString();
-  if (header !== '%PDF') {
-    throw new Error(`Not a valid PDF file (header: ${header})`);
+  const first4 = buffer.subarray(0, 4).toString('utf8');
+  if (first4 !== '%PDF') {
+    throw new Error(`Not a PDF header: "${first4}" (buffer.length: ${buffer.length}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer.constructor.name})`);
   }
+  
+  // Log what we're about to pass to pdf-parse
+  console.log(`Calling pdf-parse with buffer: length=${buffer.length}, type=${typeof buffer}, constructor=${buffer.constructor.name}, header="${first4}"`);
   
   // Dynamic import with ESM/CJS interop handling
   const mod = await import('pdf-parse');
-  const pdfParse = (mod as any).default ?? (mod as any);
+  const pdfParse = (mod as any).default ?? mod;
   
   // Ensure we're calling with the buffer
   if (!pdfParse) {
     throw new Error('Failed to import pdf-parse');
   }
   
-  const data = await pdfParse(buffer);
-  return data.text ?? '';
+  // Call pdf-parse with validated buffer
+  const parsed = await pdfParse(buffer);
+  const text = parsed?.text ?? '';
+  
+  if (!text) {
+    throw new Error(`PDF extraction returned empty text (buffer.length: ${buffer.length})`);
+  }
+  
+  return text;
 }
 
 // Extract text from Markdown (just return as-is, it's already text)
