@@ -194,7 +194,9 @@ export async function POST(request: NextRequest) {
         // Optionally store to Blob if token exists (but don't require it)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
           try {
-            await put(filename, buffer, {
+            // Convert Buffer to ArrayBuffer for @vercel/blob put()
+            const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+            await put(filename, arrayBuffer, {
               access: 'public',
               contentType: file.type || (isPDF ? 'application/pdf' : 'text/markdown'),
             });
