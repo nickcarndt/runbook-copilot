@@ -32,7 +32,7 @@ Create `.env.local` (or set in Vercel):
 
 **Optional:**
 - `BLOB_READ_WRITE_TOKEN` = enables saving uploaded files to Vercel Blob (indexing works even without it)
-- `DEBUG_UPLOADS` = `true` (enables verbose console logging for debugging)
+- `NEXT_PUBLIC_DEBUG_UPLOADS` = `true` (enables verbose console logging for debugging; default: false)
 
 ### 3) Local Dev
 
