@@ -764,10 +764,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         <button
                           onClick={() => {
                             setShowMorePreviews(!showMorePreviews);
-                            // Auto-hide scoring when collapsing "Show more"
-                            if (showMorePreviews) {
-                              setShowAdvanced(false);
-                            }
+                            // Do NOT auto-hide scoring when collapsing "Show more"
                           }}
                           className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
                           type="button"
@@ -833,8 +830,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         </div>
                       ))}
                       
-                      {/* Scoring toggle (only show when "Show more" is expanded AND there are multiple previews) */}
-                      {showMorePreviews && uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 1 && (
+                      {/* Scoring toggle (show when details are open and there's at least 1 preview) */}
+                      {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length >= 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
                           className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
