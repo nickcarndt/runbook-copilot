@@ -7,49 +7,63 @@ const openai = new OpenAI({
 
 // Extract text from PDF buffer
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  // Validate buffer is present and not empty
-  if (!buffer || buffer.length === 0) {
-    throw new Error(`PDF buffer is empty or undefined (buffer.length: ${buffer?.length || 'undefined'}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer?.constructor?.name || 'undefined'})`);
-  }
-  
-  // Ensure buffer is actually a Buffer instance
-  if (!(buffer instanceof Buffer)) {
-    throw new Error(`Buffer is not a Buffer instance (type: ${typeof buffer}, constructor: ${buffer.constructor.name})`);
-  }
-  
-  // Validate PDF header
-  const first4 = buffer.subarray(0, 4).toString('utf8');
-  if (first4 !== '%PDF') {
-    throw new Error(`Not a PDF header: "${first4}" (buffer.length: ${buffer.length}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer.constructor.name})`);
-  }
-  
-  // Log what we're about to pass to pdf-parse
-  console.log(`[extractTextFromPDF] About to call pdf-parse: length=${buffer.length}, type=${typeof buffer}, constructor=${buffer.constructor.name}, header="${first4}", isBuffer=${buffer instanceof Buffer}`);
-  
-  // Dynamic import with ESM/CJS interop handling
+  try {
+    // Validate buffer is present and not empty
+    if (!buffer || buffer.length === 0) {
+      throw new Error(`PDF buffer is empty or undefined (buffer.length: ${buffer?.length || 'undefined'}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer?.constructor?.name || 'undefined'})`);
+    }
+    
+    // Ensure buffer is actually a Buffer instance
+    if (!(buffer instanceof Buffer)) {
+      throw new Error(`Buffer is not a Buffer instance (type: ${typeof buffer}, constructor: ${buffer.constructor.name})`);
+    }
+    
+    // Validate PDF header
+    const first4 = buffer.subarray(0, 4).toString('utf8');
+    if (first4 !== '%PDF') {
+      throw new Error(`Not a PDF header: "${first4}" (buffer.length: ${buffer.length}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer.constructor.name})`);
+    }
+    
+    // Log what we're about to pass to pdf-parse
+    console.log(`[extractTextFromPDF] About to call pdf-parse: length=${buffer.length}, type=${typeof buffer}, constructor=${buffer.constructor.name}, header="${first4}", isBuffer=${buffer instanceof Buffer}`);
+    
+    // Dynamic import with ESM/CJS interop handling
   // pdf-parse can export as default, named export, or the module itself
-  const mod = await import('pdf-parse') as any;
+  let mod: any;
+  try {
+    console.log(`[extractTextFromPDF] Starting dynamic import of pdf-parse...`);
+    mod = await import('pdf-parse');
+    console.log(`[extractTextFromPDF] Import succeeded: mod type=${typeof mod}, mod keys=${Object.keys(mod || {}).join(',')}`);
+  } catch (importError: any) {
+    console.error(`[extractTextFromPDF] Import failed: ${importError.message}, stack=${importError.stack?.substring(0, 300)}`);
+    throw new Error(`Failed to import pdf-parse: ${importError.message}`);
+  }
+  
   let pdfParse: any;
   
   // Try different ways pdf-parse might be exported
   if (typeof mod === 'function') {
     pdfParse = mod;
+    console.log(`[extractTextFromPDF] Using mod as function directly`);
   } else if (mod.default && typeof mod.default === 'function') {
     pdfParse = mod.default;
+    console.log(`[extractTextFromPDF] Using mod.default`);
   } else if (mod.pdfParse && typeof mod.pdfParse === 'function') {
     pdfParse = mod.pdfParse;
+    console.log(`[extractTextFromPDF] Using mod.pdfParse`);
   } else {
     // Last resort: try the module itself
     pdfParse = mod;
+    console.log(`[extractTextFromPDF] Using mod as fallback`);
   }
   
   // Ensure we're calling with the buffer
   if (!pdfParse || typeof pdfParse !== 'function') {
-    console.error(`[extractTextFromPDF] Failed to import pdf-parse: mod type=${typeof mod}, mod.default=${typeof mod.default}, mod keys=${Object.keys(mod).join(',')}`);
+    console.error(`[extractTextFromPDF] Failed to extract pdf-parse function: mod type=${typeof mod}, mod.default=${typeof mod.default}, mod keys=${Object.keys(mod || {}).join(',')}, pdfParse type=${typeof pdfParse}`);
     throw new Error(`Failed to import pdf-parse (type: ${typeof pdfParse}, mod type: ${typeof mod})`);
   }
   
-  console.log(`[extractTextFromPDF] Successfully imported pdf-parse: type=${typeof pdfParse}, isFunction=${typeof pdfParse === 'function'}`);
+  console.log(`[extractTextFromPDF] Successfully imported pdf-parse: type=${typeof pdfParse}, isFunction=${typeof pdfParse === 'function'}, function.length=${pdfParse.length}`);
   
   // Create a defensive copy to ensure we're passing valid data
   // pdf-parse can accept Buffer or Uint8Array, so ensure we have a proper instance
@@ -111,11 +125,17 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   
   const text = parsed?.text ?? '';
   
-  if (!text) {
-    throw new Error(`PDF extraction returned empty text (buffer.length: ${buffer.length}, parsed: ${JSON.stringify(Object.keys(parsed || {}))})`);
+    if (!text) {
+      throw new Error(`PDF extraction returned empty text (buffer.length: ${buffer.length}, parsed: ${JSON.stringify(Object.keys(parsed || {}))})`);
+    }
+    
+    return text;
+  } catch (error: any) {
+    // Catch any unexpected errors and log them with full context
+    console.error(`[extractTextFromPDF] Unexpected error: ${error.message}, code=${error.code}, stack=${error.stack?.substring(0, 500)}`);
+    console.error(`[extractTextFromPDF] Error context: buffer.length=${buffer?.length || 'undefined'}, buffer_type=${typeof buffer}`);
+    throw new Error(`PDF extraction failed: ${error.message} (buffer.length: ${buffer?.length || 'undefined'})`);
   }
-  
-  return text;
 }
 
 // Extract text from Markdown (just return as-is, it's already text)
