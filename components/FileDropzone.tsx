@@ -22,6 +22,8 @@ async function parseResponse(response: Response): Promise<any> {
   }
 }
 
+type UploadLockState = 'locked' | 'verifying' | 'unlocked';
+
 export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>(''); // Upload status only
@@ -29,23 +31,20 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   const [blobAvailable, setBlobAvailable] = useState<boolean | null>(null);
   const [uploadCode, setUploadCode] = useState<string>('');
   const [showUploadCode, setShowUploadCode] = useState(false);
+  const [uploadLockState, setUploadLockState] = useState<UploadLockState>(demoOnly ? 'locked' : 'unlocked');
 
-  // Load upload code from localStorage
+  // Load upload code and verified state from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('rbc_upload_token');
+    const verified = localStorage.getItem('rbc_upload_verified') === 'true';
     if (stored) {
       setUploadCode(stored);
+      // Only restore unlocked state if code exists and was previously verified
+      if (demoOnly && verified) {
+        setUploadLockState('unlocked');
+      }
     }
-  }, []);
-
-  // Save upload code to localStorage when changed
-  useEffect(() => {
-    if (uploadCode) {
-      localStorage.setItem('rbc_upload_token', uploadCode);
-    } else {
-      localStorage.removeItem('rbc_upload_token');
-    }
-  }, [uploadCode]);
+  }, [demoOnly]);
 
   // Check if Blob is available (we'll detect this on first upload attempt)
   useEffect(() => {
@@ -53,12 +52,52 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
     setBlobAvailable(null);
   }, []);
 
+  // Verify upload code
+  const handleVerifyUploadCode = async () => {
+    if (!uploadCode.trim()) {
+      setStatus('Error: Please enter an upload code');
+      return;
+    }
+
+    setUploadLockState('verifying');
+    setStatus('Verifying upload code...');
+
+    try {
+      const response = await fetch('/api/upload/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-upload-token': uploadCode,
+        },
+      });
+
+      const data = await parseResponse(response);
+
+      if (response.ok && data.ok) {
+        setUploadLockState('unlocked');
+        setStatus('');
+        // Persist verified state
+        localStorage.setItem('rbc_upload_token', uploadCode);
+        localStorage.setItem('rbc_upload_verified', 'true');
+      } else {
+        setUploadLockState('locked');
+        setStatus('Invalid code');
+        localStorage.removeItem('rbc_upload_verified');
+      }
+    } catch (error) {
+      setUploadLockState('locked');
+      const errorMessage = error instanceof Error ? error.message : 'Verification failed';
+      setStatus(`Error: ${errorMessage}`);
+      localStorage.removeItem('rbc_upload_verified');
+    }
+  };
+
   // Check if uploads are enabled
-  const uploadsEnabled = !demoOnly || !!uploadCode;
+  const uploadsEnabled = !demoOnly || uploadLockState === 'unlocked';
 
   // Clear upload status when uploads become locked (to avoid showing stale success messages)
   useEffect(() => {
-    if (!uploadsEnabled && status && !status.includes('locked')) {
+    if (!uploadsEnabled && status && !status.includes('locked') && !status.includes('Invalid')) {
       setStatus('');
     }
   }, [uploadsEnabled, status]);
@@ -176,7 +215,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         );
       } else {
         const errorCode = data.error?.code || '';
-        if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED')) {
+        if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED' || errorCode === 'INVALID_UPLOAD_CODE')) {
+          // Relock on 401
+          if (demoOnly) {
+            setUploadLockState('locked');
+            localStorage.removeItem('rbc_upload_verified');
+          }
           setStatus('Uploads are locked for the public demo. Ask Nick for an upload code.');
         } else {
           const errorMsg = data.error?.message || data.error || 'Upload failed';
@@ -223,25 +267,53 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       {demoOnly && (
         <div className="border rounded-lg p-4 bg-gray-50">
           <label className="block text-sm font-medium mb-2">Upload Code</label>
-          <div className="relative">
-            <input
-              type={showUploadCode ? 'text' : 'password'}
-              value={uploadCode}
-              onChange={(e) => setUploadCode(e.target.value)}
-              placeholder="Enter upload code"
-              className="w-full border rounded px-3 py-2 text-sm pr-20"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type={showUploadCode ? 'text' : 'password'}
+                value={uploadCode}
+              onChange={(e) => {
+                const newCode = e.target.value;
+                setUploadCode(newCode);
+                // Relock if code changes or is cleared
+                if (uploadLockState === 'unlocked' || !newCode.trim()) {
+                  setUploadLockState('locked');
+                  localStorage.removeItem('rbc_upload_verified');
+                  if (!newCode.trim()) {
+                    localStorage.removeItem('rbc_upload_token');
+                  }
+                }
+              }}
+                placeholder="Enter upload code"
+                disabled={uploadLockState === 'verifying'}
+                className="w-full border rounded px-3 py-2 text-sm pr-20 disabled:bg-gray-100"
+              />
+              <button
+                type="button"
+                onClick={() => setShowUploadCode(!showUploadCode)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600 hover:text-gray-800 px-2"
+              >
+                {showUploadCode ? 'Hide' : 'Show'}
+              </button>
+            </div>
             <button
-              type="button"
-              onClick={() => setShowUploadCode(!showUploadCode)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600 hover:text-gray-800 px-2"
+              onClick={handleVerifyUploadCode}
+              disabled={!uploadCode.trim() || uploadLockState === 'verifying' || uploadLockState === 'unlocked'}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 text-sm whitespace-nowrap"
             >
-              {showUploadCode ? 'Hide' : 'Show'}
+              {uploadLockState === 'verifying' ? 'Verifying...' : uploadLockState === 'unlocked' ? 'Unlocked' : 'Unlock uploads'}
             </button>
           </div>
-          <p className="mt-2 text-sm text-gray-600">
-            Optional — needed only to upload your own runbooks.
-          </p>
+          {uploadLockState === 'unlocked' && (
+            <p className="mt-2 text-sm text-green-600">
+              ✓ Uploads unlocked
+            </p>
+          )}
+          {uploadLockState === 'locked' && uploadCode && (
+            <p className="mt-2 text-sm text-gray-600">
+              Optional — needed only to upload your own runbooks.
+            </p>
+          )}
         </div>
       )}
 
