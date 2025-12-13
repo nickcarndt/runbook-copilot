@@ -21,16 +21,15 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuest
   const [currentRequestId, setCurrentRequestId] = useState<string>('');
   const [startTime, setStartTime] = useState<number>(0);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const submitQuestion = async (question: string) => {
+    if (!question.trim() || loading) return;
 
-    const userMessage = { role: 'user' as const, content: input };
-    const question = input;
+    const userMessage = { role: 'user' as const, content: question };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
-    setStartTime(Date.now());
+    const submitStartTime = Date.now();
+    setStartTime(submitStartTime);
 
     try {
       const response = await fetch('/api/query', {
@@ -169,17 +168,7 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuest
               <button
                 key={i}
                 type="button"
-                onClick={() => {
-                  if (loading || !q.trim()) return;
-                  setInput(q);
-                  // Use setTimeout to ensure state is updated before submitting
-                  setTimeout(() => {
-                    const form = document.getElementById('chat-form') as HTMLFormElement;
-                    if (form) {
-                      handleSubmit({ preventDefault: () => {} } as React.FormEvent);
-                    }
-                  }, 0);
-                }}
+                onClick={() => submitQuestion(q)}
                 disabled={loading}
                 className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
