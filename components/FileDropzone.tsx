@@ -281,9 +281,14 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         hasError: !!data?.error,
         errorCode: data?.error?.code,
         errorMessage: data?.error?.message,
+        filesProcessed: data?.files_processed,
+        totalChunks: data?.total_chunks,
+        insertedFilenames: data?.inserted_filenames,
+        verifiedSearchable: data?.verified_searchable,
       });
 
       if (!response.ok) {
+        console.log('[FileDropzone] Response not OK, handling error...');
         // Show real server message
         const errorMessage = data?.error?.message || data?.error || raw || `Upload failed: ${response.status}`;
         const requestId = data?.request_id || 'unknown';
@@ -304,6 +309,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       }
 
       // Success - build message with inserted filenames
+      console.log('[FileDropzone] Response OK, building success message...');
       const requestId = data?.request_id || 'unknown';
       let successMsg = `Success! Indexed ${data.inserted_filenames?.length || data.files_processed || 0} file(s): ${(data.inserted_filenames || []).join(', ')}. `;
       successMsg += `${data.total_chunks || 0} chunks created.`;
@@ -317,14 +323,19 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       }
       
       successMsg += ` Request ID: ${requestId}`;
+      console.log('[FileDropzone] Setting success status:', successMsg);
       setStatus(successMsg);
+      console.log('[FileDropzone] Status set, about to exit try block');
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('[FileDropzone] Upload error caught:', error);
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      console.log('[FileDropzone] Setting error status:', errorMessage);
       setStatus(`Error: ${errorMessage}`);
     } finally {
       // Always clear uploading state - this is critical
+      console.log('[FileDropzone] Finally block: setting uploading=false');
       setUploading(false);
+      console.log('[FileDropzone] Upload flow complete');
     }
   };
 
