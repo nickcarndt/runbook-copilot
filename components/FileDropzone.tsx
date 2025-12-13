@@ -267,7 +267,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
             localStorage.removeItem('rbc_upload_verified');
             localStorage.removeItem('rbc_upload_token');
           }
-          setStatus('Uploads are locked for the public demo. Ask Nick for an upload code.');
+          setStatus(`Uploads are locked. Request ID: ${requestId}`);
         } else if (errorCode === 'BLOB_NOT_CONFIGURED') {
           setStatus(`Error: ${errorMessage} (Request ID: ${requestId})`);
         } else {
