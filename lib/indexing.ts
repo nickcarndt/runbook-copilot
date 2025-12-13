@@ -1,6 +1,9 @@
 import OpenAI from 'openai';
 import { query } from './db';
 
+// Declare require for Node.js runtime
+declare const require: (id: string) => any;
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -27,17 +30,28 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
     // Log what we're about to pass to pdf-parse
     console.log(`[extractTextFromPDF] About to call pdf-parse: length=${buffer.length}, type=${typeof buffer}, constructor=${buffer.constructor.name}, header="${first4}", isBuffer=${buffer instanceof Buffer}`);
     
-    // Dynamic import with ESM/CJS interop handling
-  // pdf-parse can export as default, named export, or the module itself
-  let mod: any;
-  try {
-    console.log(`[extractTextFromPDF] Starting dynamic import of pdf-parse...`);
-    mod = await import('pdf-parse');
-    console.log(`[extractTextFromPDF] Import succeeded: mod type=${typeof mod}, mod keys=${Object.keys(mod || {}).join(',')}`);
-  } catch (importError: any) {
-    console.error(`[extractTextFromPDF] Import failed: ${importError.message}, stack=${importError.stack?.substring(0, 300)}`);
-    throw new Error(`Failed to import pdf-parse: ${importError.message}`);
-  }
+    // Use require() instead of import() to ensure the patched version is used
+    // and to prevent Next.js from bundling pdf-parse
+    // Since we're in Node.js runtime, we can use require directly
+    let mod: any;
+    try {
+      console.log(`[extractTextFromPDF] Starting require of pdf-parse...`);
+      // Use require directly - this will use the patched version from node_modules
+      // The webpack externals config ensures it's not bundled
+      mod = require('pdf-parse');
+      console.log(`[extractTextFromPDF] Require succeeded: mod type=${typeof mod}, mod keys=${Object.keys(mod || {}).join(',')}`);
+    } catch (requireError: any) {
+      console.error(`[extractTextFromPDF] Require failed: ${requireError.message}, stack=${requireError.stack?.substring(0, 300)}`);
+      // Fallback to dynamic import if require fails
+      try {
+        console.log(`[extractTextFromPDF] Falling back to dynamic import...`);
+        mod = await import('pdf-parse');
+        console.log(`[extractTextFromPDF] Dynamic import succeeded: mod type=${typeof mod}, mod keys=${Object.keys(mod || {}).join(',')}`);
+      } catch (importError: any) {
+        console.error(`[extractTextFromPDF] Dynamic import also failed: ${importError.message}, stack=${importError.stack?.substring(0, 300)}`);
+        throw new Error(`Failed to load pdf-parse: ${requireError.message}`);
+      }
+    }
   
   let pdfParse: any;
   
