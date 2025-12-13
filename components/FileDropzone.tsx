@@ -711,16 +711,16 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         </div>
                       ))}
                       
-                      {/* Advanced toggle (only show when "Show more" is expanded) */}
+                      {/* Scoring toggle (only show when "Show more" is expanded) */}
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
                           className="text-gray-600 hover:text-gray-800 underline text-xs focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 rounded px-1"
                           type="button"
                           aria-expanded={showAdvanced}
-                          aria-label={showAdvanced ? 'Hide advanced metrics' : 'Show advanced metrics'}
+                          aria-label={showAdvanced ? 'Hide scoring metrics' : 'Show scoring metrics'}
                         >
-                          {showAdvanced ? 'Hide' : 'Show'} advanced
+                          {showAdvanced ? 'Hide' : 'Show'} scoring
                         </button>
                       )}
                     </div>
