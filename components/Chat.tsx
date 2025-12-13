@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useImperativeHandle, forwardRef } from 'react';
 
 interface Source {
   id: string;
@@ -15,12 +15,27 @@ interface ChatProps {
   onQuestionSubmit?: () => void; // Callback when user submits a question (to clear suggested questions)
 }
 
-export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuestions = [], onQuestionSubmit }: ChatProps) {
+export interface ChatRef {
+  reset: () => void;
+}
+
+const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete, suggestedQuestions = [], onQuestionSubmit }, ref) => {
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentRequestId, setCurrentRequestId] = useState<string>('');
   const [startTime, setStartTime] = useState<number>(0);
+
+  // Expose reset function via ref
+  useImperativeHandle(ref, () => ({
+    reset: () => {
+      setMessages([]);
+      setInput('');
+      setLoading(false);
+      setCurrentRequestId('');
+      setStartTime(0);
+    }
+  }));
 
   const submitQuestion = async (question: string) => {
     if (!question.trim() || loading) return;
@@ -204,4 +219,8 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuest
       </form>
     </div>
   );
-}
+});
+
+Chat.displayName = 'Chat';
+
+export default Chat;

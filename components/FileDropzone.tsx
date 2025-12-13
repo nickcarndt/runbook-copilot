@@ -7,6 +7,7 @@ interface FileDropzoneProps {
   demoOnly?: boolean; // When true, shows upload UI in locked state (for public demos)
   onUploadSuccess?: (data: { filenames: string[]; chunks: number; requestId: string }) => void;
   onUploadStart?: () => void;
+  resetKey?: number; // Key to force reset when changed
 }
 
 // Helper to safely parse response
@@ -46,7 +47,7 @@ const debugLog = (...args: any[]) => {
   }
 };
 
-export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onUploadSuccess, onUploadStart }: FileDropzoneProps) {
+export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onUploadSuccess, onUploadStart, resetKey }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>(''); // Upload status only
   const [demoStatus, setDemoStatus] = useState<string>(''); // Demo runbooks status
@@ -59,6 +60,21 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedDetails, setCopiedDetails] = useState(false);
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
+
+  // Reset state when resetKey changes
+  useEffect(() => {
+    if (resetKey !== undefined && resetKey > 0) {
+      setStatus('');
+      setUploadSuccessData(null);
+      setShowDetails(false);
+      setShowMorePreviews(false);
+      setShowAdvanced(false);
+      setCopiedDetails(false);
+      setShowTooltip(null);
+      setUploadCode('');
+      setUploadAuth(demoOnly ? 'locked' : 'unlocked');
+    }
+  }, [resetKey, demoOnly]);
 
   // Load upload code and verify on mount
   // Only unlock if BOTH token exists AND verified flag is true
@@ -557,7 +573,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </div>
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 flex-shrink-0 transition-colors"
+                className="ml-2 text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 flex-shrink-0 transition-colors"
                 type="button"
                 aria-expanded={showDetails}
                 aria-label={showDetails ? 'Hide details' : 'Show details'}
@@ -566,7 +582,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </button>
             </div>
             {showDetails && (
-              <div className="mt-3 pt-3 border-t border-green-200 space-y-3 text-xs max-h-[60vh] overflow-y-auto">
+              <div className="mt-3 pt-3 border-t border-green-200 bg-white rounded border border-gray-200 p-3 space-y-3 text-xs max-h-[60vh] overflow-y-auto">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-medium">Request ID:</span> <span className="font-mono text-gray-700">{uploadSuccessData.requestId}</span>
@@ -600,10 +616,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       setCopiedDetails(true);
                       setTimeout(() => setCopiedDetails(false), 1200);
                     }}
-                    className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 transition-colors"
+                    className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors"
                     type="button"
                   >
-                    {copiedDetails ? 'Copied!' : 'Copy details'}
+                    {copiedDetails ? '✓ Copied!' : 'Copy details'}
                   </button>
                 </div>
                 {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
@@ -643,7 +659,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                   className="absolute right-0 bottom-full mb-3 z-20 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
                                   style={{ transform: 'translateX(0)' }}
                                 >
-                                  Derived from cosine distance (pgvector &lt;=&gt;).
+                                  How close this snippet is to your question (cosine similarity).
                                   <div className="absolute top-full right-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
                                 </div>
                               )}
@@ -665,7 +681,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                               setShowAdvanced(false);
                             }
                           }}
-                          className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 transition-colors"
+                          className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors"
                           type="button"
                           aria-expanded={showMorePreviews}
                           aria-label={showMorePreviews ? 'Show less previews' : `Show ${uploadSuccessData.topRetrievalPreview.length - 1} more preview${uploadSuccessData.topRetrievalPreview.length - 1 > 1 ? 's' : ''}`}
@@ -708,7 +724,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                     className="absolute right-0 bottom-full mb-3 z-20 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
                                     style={{ transform: 'translateX(0)' }}
                                   >
-                                    Derived from cosine distance (pgvector &lt;=&gt;).
+                                    How close this snippet is to your question (cosine similarity).
                                     <div className="absolute top-full right-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
                                   </div>
                                 )}
@@ -725,7 +741,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
-                          className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 transition-colors"
+                          className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors"
                           type="button"
                           aria-expanded={showAdvanced}
                           aria-label={showAdvanced ? 'Hide scoring metrics' : 'Show scoring metrics'}

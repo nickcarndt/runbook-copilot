@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Chat from '@/components/Chat';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Chat, { ChatRef } from '@/components/Chat';
 import FileDropzone from '@/components/FileDropzone';
 import { demoRunbooks } from '@/lib/demo-runbooks';
 
@@ -29,6 +30,10 @@ export default function Home() {
   const [publicDemo, setPublicDemo] = useState(false);
   const [errorRequestId, setErrorRequestId] = useState<string>('');
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [resetToast, setResetToast] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+  const chatRef = useRef<ChatRef>(null);
+  const router = useRouter();
 
   useEffect(() => {
     // Fetch public demo config
@@ -114,7 +119,7 @@ export default function Home() {
   };
 
   const handleResetDemo = () => {
-    // Clear chat, suggested questions, and status (not database)
+    // Clear all UI state
     setSuggestedQuestions([]);
     setSources([]);
     setDebugInfo(null);
@@ -122,6 +127,27 @@ export default function Home() {
     setLastQuestion('');
     setLastAnswer('');
     setErrorRequestId('');
+    
+    // Clear localStorage keys
+    localStorage.removeItem('rbc_upload_token');
+    localStorage.removeItem('rbc_upload_verified');
+    localStorage.removeItem('rbc_public_demo');
+    localStorage.removeItem('rbc_demo_loaded');
+    
+    // Reset chat if ref is available
+    if (chatRef.current) {
+      chatRef.current.reset();
+    }
+    
+    // Trigger FileDropzone reset via key change
+    setResetKey(prev => prev + 1);
+    
+    // Show toast
+    setResetToast(true);
+    setTimeout(() => setResetToast(false), 2000);
+    
+    // Force refresh
+    router.refresh();
   };
 
   return (
@@ -140,19 +166,26 @@ export default function Home() {
           <h2 className="text-xl font-semibold">Upload</h2>
           <button
             onClick={handleResetDemo}
-            className="text-xs text-gray-600 hover:text-gray-800 underline"
+            type="button"
+            className="text-xs px-2 py-1 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
           >
             Reset demo
           </button>
+          {resetToast && (
+            <div className="fixed bottom-4 right-4 bg-gray-900 text-white text-xs px-3 py-2 rounded shadow-lg z-50">
+              Demo reset.
+            </div>
+          )}
         </div>
         {/* Render FileDropzone once - publicDemo prop will update but component won't remount */}
-        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} onUploadStart={handleUploadStart} />
+        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} onUploadStart={handleUploadStart} resetKey={resetKey} />
       </section>
 
       {/* Chat Section */}
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Chat</h2>
         <Chat
+          ref={chatRef}
           onSourcesUpdate={handleSourcesUpdate}
           onAnswerComplete={handleAnswerComplete}
           suggestedQuestions={suggestedQuestions}
