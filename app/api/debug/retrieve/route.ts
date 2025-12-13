@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { searchRunbooks } from '@/lib/agents';
+import { searchRunbooks } from '@/lib/retrieval';
 import { logQuery } from '@/lib/db';
 
 const requestSchema = z.object({
