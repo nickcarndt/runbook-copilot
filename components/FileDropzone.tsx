@@ -794,28 +794,35 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                 </span>
                                 <span className="relative inline-flex items-center">
                                   <button
+                                    ref={(el) => {
+                                      if (el) tooltipTriggerRefs.current.set(`similarity-${i + 1}`, el);
+                                      else tooltipTriggerRefs.current.delete(`similarity-${i + 1}`);
+                                    }}
                                     type="button"
                                     className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
                                     aria-label="Information about similarity metric"
                                     aria-describedby={`tooltip-similarity-${i + 1}`}
-                                    onMouseEnter={() => setShowTooltip(`similarity-${i + 1}`)}
+                                    onMouseEnter={() => {
+                                      setShowTooltip(`similarity-${i + 1}`);
+                                      setTimeout(() => updateTooltipPosition(`similarity-${i + 1}`), 0);
+                                    }}
                                     onMouseLeave={() => setShowTooltip(null)}
-                                    onFocus={() => setShowTooltip(`similarity-${i + 1}`)}
+                                    onFocus={() => {
+                                      setShowTooltip(`similarity-${i + 1}`);
+                                      setTimeout(() => updateTooltipPosition(`similarity-${i + 1}`), 0);
+                                    }}
                                     onBlur={() => setShowTooltip(null)}
-                                    onClick={() => setShowTooltip(showTooltip === `similarity-${i + 1}` ? null : `similarity-${i + 1}`)}
+                                    onClick={() => {
+                                      if (showTooltip === `similarity-${i + 1}`) {
+                                        setShowTooltip(null);
+                                      } else {
+                                        setShowTooltip(`similarity-${i + 1}`);
+                                        setTimeout(() => updateTooltipPosition(`similarity-${i + 1}`), 0);
+                                      }
+                                    }}
                                   >
                                     <span aria-hidden="true">ℹ️</span>
                                   </button>
-                                  {showTooltip === `similarity-${i + 1}` && (
-                                    <div
-                                      id={`tooltip-similarity-${i + 1}`}
-                                      role="tooltip"
-                                      className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 max-w-[260px] whitespace-normal rounded bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"
-                                    >
-                                      Cosine similarity between your question and this snippet.
-                                      <div className="absolute left-1/2 top-full -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
-                                    </div>
-                                  )}
                                 </span>
                               </div>
                               <div className="text-gray-400 text-[10px]">
