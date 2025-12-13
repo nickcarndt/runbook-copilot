@@ -28,7 +28,7 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   
   // Dynamic import with ESM/CJS interop handling
   // pdf-parse can export as default, named export, or the module itself
-  const mod = await import('pdf-parse');
+  const mod = await import('pdf-parse') as any;
   let pdfParse: any;
   
   // Try different ways pdf-parse might be exported
