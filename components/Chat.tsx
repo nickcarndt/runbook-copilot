@@ -149,6 +149,11 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuest
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitQuestion(input);
+  };
+
   return (
     <div className="border rounded-lg p-4">
       <div className="h-64 overflow-y-auto mb-4 space-y-2">
