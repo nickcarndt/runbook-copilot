@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { logUpload } from '@/lib/db';
-import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk } from '@/lib/indexing';
+import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
 
 const requestSchema = z.object({
   blobUrls: z.array(z.string().url()).min(1).max(10), // Max 10 files
@@ -68,6 +68,28 @@ export async function POST(request: NextRequest) {
           latency_ms: latency,
         },
         { status: 401 }
+      );
+    }
+
+    // Check if UNIQUE constraint exists
+    const hasConstraint = await checkUniqueConstraint();
+    if (!hasConstraint) {
+      const latency = Date.now() - startTime;
+      try {
+        await logUpload(requestId, latency, 'error', 'Missing UNIQUE constraint on documents.filename');
+      } catch (logError) {
+        // Ignore logging errors
+      }
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          error: { 
+            message: 'Database schema is missing UNIQUE constraint on documents.filename. Please run: npm run db:migrate', 
+            code: 'SCHEMA_ERROR' 
+          },
+          latency_ms: latency,
+        },
+        { status: 500 }
       );
     }
 

@@ -56,7 +56,7 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete }: ChatProps) {
         
         // Check for sources tag
         if (chunk.includes('<SOURCES>')) {
-          const sourcesMatch = chunk.match(/<SOURCES>(.*?)<\/SOURCES>/s);
+          const sourcesMatch = chunk.match(/<SOURCES>([\s\S]*?)<\/SOURCES>/);
           if (sourcesMatch) {
             try {
               const sourcesData = JSON.parse(sourcesMatch[1]);
@@ -131,7 +131,7 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete }: ChatProps) {
       <div className="h-64 overflow-y-auto mb-4 space-y-2">
         {messages.map((msg, i) => (
           <div key={i} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
-            <div className={`inline-block p-2 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+            <div className={`inline-block p-2 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'} ${msg.role === 'assistant' ? 'whitespace-pre-wrap' : ''}`}>
               {msg.content}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { tool } from '@llamaindex/core';
+import { tool } from 'llamaindex';
 import { agent, agentStreamEvent, agentToolCallEvent } from '@llamaindex/workflow';
 import { openai } from '@llamaindex/openai';
 import { z } from 'zod';
@@ -24,12 +24,30 @@ async function searchRunbooks(queryText: string, topK: number = 5): Promise<Arra
     [JSON.stringify(queryEmbedding), topK]
   );
 
-  return result.rows.map(row => ({
-    id: row.id,
-    text: row.text,
-    filename: row.filename,
-    chunkIndex: row.chunk_index,
-  }));
+  // Dedupe results by id, then by filename+chunkIndex
+  const seenIds = new Set<string>();
+  const seenChunks = new Set<string>();
+  const deduped: Array<{ id: string; text: string; filename: string; chunkIndex: number }> = [];
+
+  for (const row of result.rows) {
+    const chunkKey = `${row.filename}:${row.chunk_index}`;
+    
+    // Skip if we've seen this id or this filename+chunkIndex combination
+    if (seenIds.has(row.id) || seenChunks.has(chunkKey)) {
+      continue;
+    }
+
+    seenIds.add(row.id);
+    seenChunks.add(chunkKey);
+    deduped.push({
+      id: row.id,
+      text: row.text,
+      filename: row.filename,
+      chunkIndex: row.chunk_index,
+    });
+  }
+
+  return deduped;
 }
 
 // Create searchRunbooks tool
@@ -51,18 +69,25 @@ const searchRunbooksTool = tool(
 // System prompt for clear, numbered steps and source citations
 const SYSTEM_PROMPT = `You are a runbook assistant that helps users resolve technical issues by providing clear, actionable steps from uploaded runbooks.
 
-Your responses must:
-1. Provide clear, numbered steps (1., 2., 3., etc.)
-2. Cite sources by runbook title/heading using format: [Source: filename]
-3. Be concise and actionable
-4. Only use information from the searchRunbooks tool results
+CRITICAL RULES - YOU MUST FOLLOW THESE:
+1. You MUST call the searchRunbooks tool BEFORE providing any answer. Never answer without first calling searchRunbooks.
+2. If searchRunbooks returns an empty array or no results, respond EXACTLY: "No relevant runbook content found." Do NOT provide generic advice or suggestions.
+3. Every line of your answer that contains information from runbooks MUST include a citation in the format: [Source: filename]
+4. Provide clear, numbered steps (1., 2., 3., etc.)
+5. Be concise and actionable
+6. Only use information from the searchRunbooks tool results - do not make up or infer information
 
 When citing sources, use the filename from the search results. If a runbook has headings in the text, reference them when relevant.
 
 Format your response with:
 - Clear numbered steps
-- Source citations in brackets: [Source: filename]
-- Brief explanations where needed`;
+- Source citations on EVERY line that uses runbook information: [Source: filename]
+- Brief explanations where needed
+
+Example format:
+1. First step based on runbook content [Source: database-troubleshooting.md]
+2. Second step [Source: database-troubleshooting.md]
+3. Third step [Source: memory-optimization.md]`;
 
 // Create agent with OpenAI LLM
 export const runbookAgent = agent({
@@ -75,14 +100,15 @@ export const runbookAgent = agent({
 export async function* generateResponse(
   userMessage: string
 ): AsyncGenerator<{ type: 'text' | 'sources'; data: string | Array<{ id: string; filename: string; chunkIndex: number }> }, void, unknown> {
-  const events = runbookAgent.runStream(userMessage);
+  const workflowStream = runbookAgent.runStream(userMessage);
   const retrievedChunks: Array<{ id: string; filename: string; chunkIndex: number }> = [];
 
-  for await (const event of events) {
+  for await (const event of workflowStream as unknown as AsyncIterable<any>) {
     if (agentToolCallEvent.include(event) && event.data.toolName === 'searchRunbooks') {
       // Parse tool result to extract chunk IDs
       try {
-        const toolResult = JSON.parse(event.data.result || '[]');
+        const toolCall = event.data as any;
+        const toolResult = JSON.parse(toolCall.result || toolCall.output || '[]');
         if (Array.isArray(toolResult)) {
           for (const chunk of toolResult) {
             if (chunk.id && chunk.filename !== undefined) {

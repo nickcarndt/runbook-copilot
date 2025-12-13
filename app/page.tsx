@@ -141,10 +141,37 @@ export default function Home() {
             Debug {debugOpen ? '▼' : '▲'}
           </button>
           {debugOpen && (
-            <div className="bg-gray-100 p-4 rounded-t border border-gray-300 max-h-64 overflow-auto">
-              <pre className="text-xs">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
+            <div className="bg-gray-100 p-4 rounded-t border border-gray-300 max-h-96 overflow-auto w-96">
+              <div className="space-y-2 text-xs">
+                <div>
+                  <span className="font-semibold">Request ID:</span> {debugInfo.requestId}
+                </div>
+                <div>
+                  <span className="font-semibold">Latency:</span> {debugInfo.latency}ms
+                </div>
+                <div>
+                  <span className="font-semibold">Retrieved Sources:</span> {debugInfo.sources.length}
+                </div>
+                {debugInfo.sources.length > 0 && (
+                  <div className="mt-2">
+                    <div className="font-semibold mb-1">Chunk IDs & Sources:</div>
+                    <div className="space-y-1 max-h-64 overflow-auto">
+                      {debugInfo.sources.map((source, i) => (
+                        <div key={i} className="bg-white p-2 rounded border text-xs">
+                          <div className="font-mono text-xs break-all">{source.id}</div>
+                          <div className="text-gray-700">{source.filename} (chunk {source.chunkIndex})</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <details className="mt-2">
+                  <summary className="cursor-pointer font-semibold">Full JSON</summary>
+                  <pre className="mt-1 text-xs bg-white p-2 rounded border overflow-auto max-h-32">
+                    {JSON.stringify(debugInfo, null, 2)}
+                  </pre>
+                </details>
+              </div>
             </div>
           )}
         </div>

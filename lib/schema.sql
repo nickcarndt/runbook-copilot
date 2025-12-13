@@ -5,7 +5,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   filename TEXT NOT NULL,
-  uploaded_at TIMESTAMP DEFAULT NOW()
+  uploaded_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT documents_filename_unique UNIQUE (filename)
 );
 
 -- Chunks table with vector column

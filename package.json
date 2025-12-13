@@ -11,32 +11,31 @@
     "db:reset": "psql \"$DATABASE_URL\" -c \"DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;\" && npm run db:migrate"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "next": "^14.2.0",
-    "@llamaindex/core": "^0.6.22",
     "@llamaindex/openai": "^0.4.22",
     "@llamaindex/workflow": "^1.1.24",
-    "zod": "^3.23.8",
-    "uuid": "^10.0.0",
-    "@vercel/blob": "^0.20.0",
-    "openai": "^4.52.0",
-    "pdf-parse": "^1.1.1",
-    "pg": "^8.11.3"
+    "@vercel/blob": "0.20.0",
+    "llamaindex": "^0.12.1",
+    "next": "14.2.35",
+    "openai": "4.52.0",
+    "pdf-parse": "1.1.1",
+    "pg": "8.11.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "uuid": "10.0.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/pg": "^8.11.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/node": "^20.14.0",
     "@types/uuid": "^10.0.0",
-    "@types/pg": "^8.11.0",
-    "@types/pdf-parse": "^1.1.4",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
     "autoprefixer": "^10.4.0",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.0"
+    "eslint-config-next": "^14.2.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.5.0"
   }
 }
-

@@ -46,13 +46,14 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         const encoder = new TextEncoder();
         try {
-          const events = runbookAgent.runStream(message);
+          const workflowStream = runbookAgent.runStream(message);
 
-          for await (const event of events) {
+          for await (const event of workflowStream as unknown as AsyncIterable<any>) {
             // Track tool calls to capture retrieved chunks
             if (agentToolCallEvent.include(event) && event.data.toolName === 'searchRunbooks') {
               try {
-                const toolResult = JSON.parse(event.data.result || '[]');
+                const toolCall = event.data as any;
+                const toolResult = JSON.parse(toolCall.result || toolCall.output || '[]');
                 if (Array.isArray(toolResult)) {
                   for (const chunk of toolResult) {
                     if (chunk.id) {

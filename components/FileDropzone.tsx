@@ -49,8 +49,8 @@ export default function FileDropzone({ onDemoRunbooksLoad }: FileDropzoneProps) 
       
       if (response.ok) {
         setStatus(
-          `Success! Indexed ${data.documents_indexed} document(s), ` +
-          `${data.chunks_indexed} chunks. Request ID: ${data.request_id}`
+          `Success! Indexed ${data.inserted_documents} document(s), ` +
+          `${data.inserted_chunks} chunks. Request ID: ${data.request_id}`
         );
         onDemoRunbooksLoad?.();
       } else {
