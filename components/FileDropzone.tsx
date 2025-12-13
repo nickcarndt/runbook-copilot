@@ -582,7 +582,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         `Request ID: ${uploadSuccessData.requestId}`,
                         '',
                         'Retrieval preview:',
-                        ...previews.map((r, i) => `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`),
+                        ...previews.map((r, i) => {
+                          let previewText = `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`;
+                          // Include similarity metric if advanced mode is enabled and distance is available
+                          if (showMorePreviews && showAdvanced && r.distance !== undefined) {
+                            const similarity = Math.max(0, Math.min(1, 1 - r.distance));
+                            previewText += `\nSimilarity: ${similarity.toFixed(2)} (derived from cosine distance ${r.distance.toFixed(4)})`;
+                          }
+                          return previewText;
+                        }),
                       ].join('\n');
                       
                       await navigator.clipboard.writeText(details);
@@ -607,8 +615,21 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         {/* Show similarity for first preview only when advanced is enabled AND show more is expanded */}
                         {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                         {showMorePreviews && showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
-                          <div className="text-gray-500 text-xs mt-1.5">
-                            Similarity: {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
+                          <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
+                            <div className="flex items-center gap-1">
+                              <span>
+                                Similarity: {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
+                              </span>
+                              <span 
+                                className="text-gray-400 cursor-help" 
+                                title="Derived from cosine distance (pgvector <=>)."
+                              >
+                                ℹ️
+                              </span>
+                            </div>
+                            <div className="text-gray-400 text-[10px]">
+                              Cosine distance: {uploadSuccessData.topRetrievalPreview[0].distance.toFixed(4)} (lower is better)
+                            </div>
                           </div>
                         )}
                       </div>
@@ -635,8 +656,21 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           <div className="text-gray-700 mt-1 leading-relaxed">{result.textPreview}</div>
                           {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                           {showAdvanced && result.distance !== undefined && (
-                            <div className="text-gray-500 text-xs mt-1.5">
-                              Similarity: {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
+                            <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
+                              <div className="flex items-center gap-1">
+                                <span>
+                                  Similarity: {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
+                                </span>
+                                <span 
+                                  className="text-gray-400 cursor-help" 
+                                  title="Derived from cosine distance (pgvector <=>)."
+                                >
+                                  ℹ️
+                                </span>
+                              </div>
+                              <div className="text-gray-400 text-[10px]">
+                                Cosine distance: {result.distance.toFixed(4)} (lower is better)
+                              </div>
                             </div>
                           )}
                         </div>
