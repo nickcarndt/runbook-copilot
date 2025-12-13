@@ -1,6 +1,6 @@
 import { tool } from 'llamaindex';
 import { agent, agentStreamEvent, agentToolCallEvent } from '@llamaindex/workflow';
-import { openai } from '@llamaindex/openai';
+import { openai as openaiFactory } from '@llamaindex/openai';
 import { z } from 'zod';
 import { searchRunbooks } from './retrieval';
 
@@ -90,17 +90,33 @@ Example format:
 2. Second step [Source: database-troubleshooting.md]
 3. Third step [Source: memory-optimization.md]`;
 
-// Create agent with OpenAI LLM
-export const runbookAgent = agent({
-  tools: [searchRunbooksTool],
-  llm: openai({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini' }),
-  systemPrompt: SYSTEM_PROMPT,
-});
+// Lazy agent creation - only initialize at runtime, not at build time
+let runbookAgentInstance: ReturnType<typeof agent> | null = null;
+
+function getRunbookAgent() {
+  if (!runbookAgentInstance) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
+    }
+    runbookAgentInstance = agent({
+      tools: [searchRunbooksTool],
+      llm: openaiFactory({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini' }),
+      systemPrompt: SYSTEM_PROMPT,
+    });
+  }
+  return runbookAgentInstance;
+}
+
+// Export getter function instead of direct agent instance
+export function getRunbookAgentInstance() {
+  return getRunbookAgent();
+}
 
 // Stream agent response and track retrieved chunks
 export async function* generateResponse(
   userMessage: string
 ): AsyncGenerator<{ type: 'text' | 'sources'; data: string | Array<{ id: string; filename: string; chunkIndex: number }> }, void, unknown> {
+  const runbookAgent = getRunbookAgent();
   const workflowStream = runbookAgent.runStream(userMessage);
   const retrievedChunks: Array<{ id: string; filename: string; chunkIndex: number }> = [];
 

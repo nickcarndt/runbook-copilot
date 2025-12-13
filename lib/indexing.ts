@@ -4,9 +4,20 @@ import { query } from './db';
 // Declare require for Node.js runtime
 declare const require: (id: string) => any;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy OpenAI client creation - only initialize at runtime, not at build time
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
+    }
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
 
 // Extract text from PDF buffer
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
@@ -248,6 +259,7 @@ function chunkMarkdownWithHeadings(text: string, maxChunkSize: number, overlap: 
 
 // Create embedding using OpenAI
 export async function createEmbedding(text: string): Promise<number[]> {
+  const openai = getOpenAIClient();
   const response = await openai.embeddings.create({
     model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
     input: text,

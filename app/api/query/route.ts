@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { runbookAgent } from '@/lib/agents';
+import { getRunbookAgentInstance } from '@/lib/agents';
 import { logQuery } from '@/lib/db';
 import { agentStreamEvent, agentToolCallEvent } from '@llamaindex/workflow';
 import { checkRateLimit, getClientIP } from '@/lib/rateLimit';
@@ -36,10 +36,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { message } = requestSchema.parse(body);
 
+    // Validate OPENAI_API_KEY at runtime (not build time)
+    if (!process.env.OPENAI_API_KEY) {
+      const latency = Date.now() - startTime;
+      await logQuery(requestId, latency, 'error', 'OPENAI_API_KEY not set');
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          error: { message: 'OPENAI_API_KEY environment variable is not set', code: 'CONFIG_ERROR' },
+          latency_ms: latency,
+        },
+        { status: 500 }
+      );
+    }
+
     // Track retrieved chunks and tool calls
     const retrievedChunkIds: string[] = [];
     const sources: Array<{ id: string; filename: string; chunkIndex: number }> = [];
     let toolCallsCount = 0;
+
+    // Get agent instance (lazy initialization)
+    const runbookAgent = getRunbookAgentInstance();
 
     // Create streaming response using workflow agent
     const stream = new ReadableStream({
