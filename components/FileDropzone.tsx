@@ -58,6 +58,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [showMorePreviews, setShowMorePreviews] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedDetails, setCopiedDetails] = useState(false);
+  const [showTooltip, setShowTooltip] = useState<string | null>(null);
 
   // Load upload code and verify on mount
   // Only unlock if BOTH token exists AND verified flag is true
@@ -616,16 +617,33 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                         {showMorePreviews && showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
                           <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 relative">
                               <span>
                                 Similarity: {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
                               </span>
-                              <span 
-                                className="text-gray-400 cursor-help" 
-                                title="Derived from cosine distance (pgvector <=>)."
+                              <button
+                                type="button"
+                                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                                aria-label="Information about similarity metric"
+                                aria-describedby="tooltip-similarity-0"
+                                onMouseEnter={() => setShowTooltip('similarity-0')}
+                                onMouseLeave={() => setShowTooltip(null)}
+                                onFocus={() => setShowTooltip('similarity-0')}
+                                onBlur={() => setShowTooltip(null)}
+                                onClick={() => setShowTooltip(showTooltip === 'similarity-0' ? null : 'similarity-0')}
                               >
-                                ℹ️
-                              </span>
+                                <span aria-hidden="true">ℹ️</span>
+                              </button>
+                              {showTooltip === 'similarity-0' && (
+                                <div
+                                  id="tooltip-similarity-0"
+                                  role="tooltip"
+                                  className="absolute left-0 bottom-full mb-2 z-10 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
+                                >
+                                  Derived from cosine distance (pgvector &lt;=&gt;).
+                                  <div className="absolute top-full left-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                </div>
+                              )}
                             </div>
                             <div className="text-gray-400 text-[10px]">
                               Cosine distance: {uploadSuccessData.topRetrievalPreview[0].distance.toFixed(4)} (lower is better)
@@ -657,16 +675,33 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                           {showAdvanced && result.distance !== undefined && (
                             <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 relative">
                                 <span>
                                   Similarity: {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
                                 </span>
-                                <span 
-                                  className="text-gray-400 cursor-help" 
-                                  title="Derived from cosine distance (pgvector <=>)."
+                                <button
+                                  type="button"
+                                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                                  aria-label="Information about similarity metric"
+                                  aria-describedby={`tooltip-similarity-${i + 1}`}
+                                  onMouseEnter={() => setShowTooltip(`similarity-${i + 1}`)}
+                                  onMouseLeave={() => setShowTooltip(null)}
+                                  onFocus={() => setShowTooltip(`similarity-${i + 1}`)}
+                                  onBlur={() => setShowTooltip(null)}
+                                  onClick={() => setShowTooltip(showTooltip === `similarity-${i + 1}` ? null : `similarity-${i + 1}`)}
                                 >
-                                  ℹ️
-                                </span>
+                                  <span aria-hidden="true">ℹ️</span>
+                                </button>
+                                {showTooltip === `similarity-${i + 1}` && (
+                                  <div
+                                    id={`tooltip-similarity-${i + 1}`}
+                                    role="tooltip"
+                                    className="absolute left-0 bottom-full mb-2 z-10 bg-gray-900 text-white text-xs rounded px-2 py-1.5 shadow-lg whitespace-nowrap"
+                                  >
+                                    Derived from cosine distance (pgvector &lt;=&gt;).
+                                    <div className="absolute top-full left-2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                  </div>
+                                )}
                               </div>
                               <div className="text-gray-400 text-[10px]">
                                 Cosine distance: {result.distance.toFixed(4)} (lower is better)
