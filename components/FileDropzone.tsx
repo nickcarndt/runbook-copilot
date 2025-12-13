@@ -541,16 +541,21 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
         ) : status === 'success' && uploadSuccessData ? (
           <div className="text-sm p-2.5 rounded border text-green-600 bg-green-50/80 border-green-200">
             <div className="flex items-start justify-between">
-              <div>
-                <span className="font-medium">✅ Indexed {uploadSuccessData.filenames.join(', ')}.</span>
-                <span className="ml-1">{uploadSuccessData.chunks} chunks created.</span>
-                {uploadSuccessData.verifiedSearchable && (
-                  <span className="ml-1">Search verified.</span>
-                )}
+              <div className="flex-1">
+                <div>
+                  <span className="font-medium">✅ Indexed {uploadSuccessData.filenames.join(', ')}.</span>
+                  <span className="ml-1">{uploadSuccessData.chunks} chunks created.</span>
+                  {uploadSuccessData.verifiedSearchable && (
+                    <span className="ml-1">Search verified.</span>
+                  )}
+                </div>
+                <div className="text-xs text-green-700/80 mt-1">
+                  You can now ask questions below.
+                </div>
               </div>
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
+                className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1 flex-shrink-0"
                 type="button"
                 aria-expanded={showDetails}
                 aria-label={showDetails ? 'Hide details' : 'Show details'}
