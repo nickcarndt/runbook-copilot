@@ -31,28 +31,54 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   const [showUploadCode, setShowUploadCode] = useState(false);
   const [uploadAuth, setUploadAuth] = useState<UploadAuthState>(demoOnly ? 'locked' : 'unlocked');
 
-  // Load upload code and verified state from localStorage
-  // Only unlock if we have BOTH a non-empty token AND verified flag
+  // Load upload code and verify on mount if token exists
+  // Never trust localStorage verified flag alone - always verify with server
   useEffect(() => {
     if (!demoOnly) return;
     
     const stored = localStorage.getItem('rbc_upload_token') ?? '';
-    const verified = localStorage.getItem('rbc_upload_verified') === 'true';
     const hasToken = !!stored.trim();
     
-    // Reset stale verified flags if token is missing or empty
-    if (!hasToken || !verified) {
-      localStorage.removeItem('rbc_upload_verified');
+    if (!hasToken) {
+      // No token - must be locked
       setUploadAuth('locked');
-      if (hasToken) {
-        // Token exists but not verified - load it into input but keep locked
-        setUploadCode(stored);
-      }
-    } else {
-      // Both token and verified exist - unlock
-      setUploadCode(stored);
-      setUploadAuth('unlocked');
+      localStorage.removeItem('rbc_upload_verified');
+      return;
     }
+    
+    // Token exists - load it and verify with server
+    setUploadCode(stored);
+    setUploadAuth('checking');
+    
+    // Verify token with server
+    fetch('/api/upload/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-upload-token': stored,
+      },
+    })
+      .then(async (response) => {
+        try {
+          const data = await response.json();
+          if (response.ok && data.valid === true) {
+            setUploadAuth('unlocked');
+            localStorage.setItem('rbc_upload_verified', 'true');
+          } else {
+            setUploadAuth('locked');
+            localStorage.removeItem('rbc_upload_verified');
+            localStorage.removeItem('rbc_upload_token');
+            setUploadCode('');
+          }
+        } catch (parseError) {
+          setUploadAuth('locked');
+          localStorage.removeItem('rbc_upload_verified');
+        }
+      })
+      .catch(() => {
+        setUploadAuth('locked');
+        localStorage.removeItem('rbc_upload_verified');
+      });
   }, [demoOnly]);
 
   // Verify upload code (only called on explicit button click)
@@ -331,12 +357,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
               Invalid code. Please check and try again.
             </p>
           )}
-          {uploadAuth === 'locked' && uploadCode && (
-            <p className="mt-2 text-sm text-gray-600">
-              Optional — needed only to upload your own runbooks.
-            </p>
-          )}
-          {uploadAuth === 'locked' && !uploadCode && (
+          {uploadAuth === 'locked' && (
             <p className="mt-2 text-sm text-gray-600">
               Optional — needed only to upload your own runbooks.
             </p>
@@ -365,7 +386,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         />
         {!uploadsEnabled ? (
           <div className="text-sm text-gray-600">
-            Uploads are locked for the public demo. Ask Nick for an upload code.
+            {demoOnly ? 'Uploads are locked. Enter an upload code above to unlock.' : 'Uploads disabled'}
           </div>
         ) : (
           <label
