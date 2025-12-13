@@ -11,9 +11,10 @@ interface Source {
 interface ChatProps {
   onSourcesUpdate?: (sources: Source[], requestId: string, latency: number, error?: { message: string; code?: string }) => void;
   onAnswerComplete?: (question: string, answer: string) => void;
+  suggestedQuestions?: string[];
 }
 
-export default function Chat({ onSourcesUpdate, onAnswerComplete }: ChatProps) {
+export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuestions = [] }: ChatProps) {
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -160,7 +161,35 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete }: ChatProps) {
           </div>
         ))}
       </div>
-      <form onSubmit={handleSubmit}>
+      {suggestedQuestions.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs text-gray-600 mb-2">Suggested questions:</div>
+          <div className="flex flex-wrap gap-2">
+            {suggestedQuestions.map((q, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  if (loading || !q.trim()) return;
+                  setInput(q);
+                  // Use setTimeout to ensure state is updated before submitting
+                  setTimeout(() => {
+                    const form = document.getElementById('chat-form') as HTMLFormElement;
+                    if (form) {
+                      handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+                    }
+                  }, 0);
+                }}
+                disabled={loading}
+                className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <form onSubmit={handleSubmit} id="chat-form">
         <input
           type="text"
           value={input}

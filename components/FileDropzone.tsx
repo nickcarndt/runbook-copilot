@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
   demoOnly?: boolean; // When true, shows upload UI in locked state (for public demos)
+  onUploadSuccess?: (data: { filenames: string[]; chunks: number; requestId: string }) => void;
 }
 
 // Helper to safely parse response
@@ -23,13 +24,23 @@ async function parseResponse(response: Response): Promise<any> {
 
 type UploadAuthState = 'locked' | 'checking' | 'unlocked' | 'invalid';
 
-export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: FileDropzoneProps) {
+interface UploadSuccessData {
+  filenames: string[];
+  chunks: number;
+  requestId: string;
+  verifiedSearchable: boolean;
+  topRetrievalPreview?: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }>;
+}
+
+export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onUploadSuccess }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>(''); // Upload status only
   const [demoStatus, setDemoStatus] = useState<string>(''); // Demo runbooks status
   const [uploadCode, setUploadCode] = useState<string>('');
   const [showUploadCode, setShowUploadCode] = useState(false);
   const [uploadAuth, setUploadAuth] = useState<UploadAuthState>(demoOnly ? 'locked' : 'unlocked');
+  const [uploadSuccessData, setUploadSuccessData] = useState<UploadSuccessData | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   // Load upload code and verify on mount
   // Only unlock if BOTH token exists AND verified flag is true
@@ -326,28 +337,27 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         return;
       }
 
-      // Success - build message with inserted filenames
-      console.log('[FileDropzone] Response OK, building success message...');
+      // Success - store data for compact display and suggested questions
+      console.log('[FileDropzone] Response OK, storing success data...');
       const requestId = data?.request_id || 'unknown';
-      let successMsg = `Success! Indexed ${data.inserted_filenames?.length || data.files_processed || 0} file(s): ${(data.inserted_filenames || []).join(', ')}. `;
-      successMsg += `${data.total_chunks || 0} chunks created.`;
+      const filenames = data.inserted_filenames || [];
+      const chunks = data.total_chunks || 0;
       
-      // Add verification status
-      if (data.verified_searchable === true && data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
-        const firstResult = data.top_retrieval_preview[0];
-        // Truncate preview to 120-160 chars and replace newlines with spaces
-        let preview = firstResult.textPreview.replace(/\s+/g, ' ').trim();
-        if (preview.length > 140) {
-          preview = preview.substring(0, 140) + '...';
-        }
-        successMsg += ` Verified searchable: "${preview}" (from ${firstResult.filename})`;
-      } else if (data.verified_searchable === false) {
-        successMsg += ` (Search verification pending - content may not be immediately searchable)`;
+      const successData: UploadSuccessData = {
+        filenames,
+        chunks,
+        requestId,
+        verifiedSearchable: data.verified_searchable === true,
+        topRetrievalPreview: data.top_retrieval_preview || undefined,
+      };
+      
+      setUploadSuccessData(successData);
+      setStatus('success'); // Use special status value to trigger compact display
+      
+      // Notify parent component for suggested questions
+      if (onUploadSuccess) {
+        onUploadSuccess({ filenames, chunks, requestId });
       }
-      
-      successMsg += ` Request ID: ${requestId}`;
-      console.log('[FileDropzone] Setting success status:', successMsg);
-      setStatus(successMsg);
       console.log('[FileDropzone] Status set, about to exit try block');
     } catch (error) {
       console.error('[FileDropzone] Upload error caught:', error);
@@ -483,12 +493,51 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       <div className="mt-4">
         {uploading ? (
           <div className="text-sm text-gray-600">Uploading and processing files...</div>
+        ) : status === 'success' && uploadSuccessData ? (
+          <div className="text-sm p-3 rounded border text-green-600 bg-green-50 border-green-200">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="font-medium">✅ Indexed {uploadSuccessData.filenames.join(', ')}.</span>
+                <span className="ml-1">{uploadSuccessData.chunks} chunks created.</span>
+                {uploadSuccessData.verifiedSearchable && (
+                  <span className="ml-1">Search verified.</span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowDetails(!showDetails)}
+                className="ml-2 text-xs text-green-700 hover:text-green-900 underline"
+              >
+                {showDetails ? 'Hide' : 'Show'} details
+              </button>
+            </div>
+            {showDetails && (
+              <div className="mt-3 pt-3 border-t border-green-200 space-y-2 text-xs">
+                <div>
+                  <span className="font-medium">Request ID:</span> {uploadSuccessData.requestId}
+                </div>
+                {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
+                  <div>
+                    <span className="font-medium">Retrieval preview:</span>
+                    <div className="mt-1 space-y-1">
+                      {uploadSuccessData.topRetrievalPreview.map((result, i) => (
+                        <div key={i} className="bg-white p-2 rounded border border-green-200">
+                          <div className="font-medium">{result.filename} (chunk {result.chunkIndex})</div>
+                          <div className="text-gray-600 mt-1">{result.textPreview}</div>
+                          {result.distance !== undefined && (
+                            <div className="text-gray-500 text-xs mt-1">Distance: {result.distance.toFixed(4)}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         ) : status ? (
           <div className={`text-sm p-3 rounded border ${
-            status.startsWith('Error') 
+            status.startsWith('Error') || status.includes('failed')
               ? 'text-red-600 bg-red-50 border-red-200' 
-              : status.startsWith('Success')
-              ? 'text-green-600 bg-green-50 border-green-200'
               : 'text-gray-600 bg-gray-50 border-gray-200'
           }`}>
             {status}

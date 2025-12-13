@@ -28,6 +28,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [publicDemo, setPublicDemo] = useState(false);
   const [errorRequestId, setErrorRequestId] = useState<string>('');
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
 
   useEffect(() => {
     // Fetch public demo config
@@ -96,6 +97,21 @@ export default function Home() {
     }
   };
 
+  const handleUploadSuccess = (data: { filenames: string[]; chunks: number; requestId: string }) => {
+    // Generate suggested questions based on uploaded filenames
+    const filename = data.filenames[0] || 'runbook';
+    const baseName = filename.replace(/\.(pdf|md|markdown)$/i, '').replace(/[_-]/g, ' ');
+    
+    // Generate 2-3 contextual questions
+    const questions = [
+      `How do I troubleshoot ${baseName}?`,
+      `What are the steps for ${baseName}?`,
+      `What should I do if ${baseName} fails?`,
+    ].slice(0, 3);
+    
+    setSuggestedQuestions(questions);
+  };
+
   return (
     <div className="min-h-screen p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-8">Runbook Copilot</h1>
@@ -110,7 +126,7 @@ export default function Home() {
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Upload</h2>
         {/* Render FileDropzone once - publicDemo prop will update but component won't remount */}
-        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} />
+        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} />
       </section>
 
       {/* Chat Section */}
@@ -119,6 +135,7 @@ export default function Home() {
         <Chat
           onSourcesUpdate={handleSourcesUpdate}
           onAnswerComplete={handleAnswerComplete}
+          suggestedQuestions={suggestedQuestions}
         />
       </section>
 
