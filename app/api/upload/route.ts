@@ -110,13 +110,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract files from FormData
-    const files: File[] = [];
-    for (const [key, value] of formData.entries()) {
-      if (value instanceof File) {
-        files.push(value);
-      }
-    }
+    // Extract files from FormData (explicit field name 'files')
+    const files = formData.getAll('files') as File[];
 
     // Enforce max file count
     if (files.length === 0) {
@@ -129,7 +124,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           request_id: requestId,
-          error: { message: 'No files provided', code: 'VALIDATION_ERROR' },
+          error: { message: 'No files uploaded', code: 'VALIDATION_ERROR' },
           latency_ms: latency,
         },
         { status: 400 }
@@ -168,9 +163,18 @@ export async function POST(request: NextRequest) {
           throw new Error(`Unsupported file type: ${filename}`);
         }
 
-        // Read file into buffer
+        // Read file into buffer with validation
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
+        
+        // Validate buffer is not empty
+        if (!buffer.length) {
+          throw new Error(`Empty upload: ${filename} (file.size: ${file.size}, buffer.length: ${buffer.length})`);
+        }
+        
+        // Debug log (include in error if needed)
+        console.log(`Processing file: ${filename}, type: ${file.type}, size: ${file.size}, buffer.length: ${buffer.length}`);
+        
         totalSize += buffer.length;
 
         // Check total size limit
@@ -206,10 +210,18 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Extract text
+        // Extract text (ensure buffer is passed correctly)
         let text: string;
         if (isPDF) {
+          // Validate PDF header (optional sanity check)
+          const pdfHeader = buffer.subarray(0, 4).toString();
+          if (pdfHeader !== '%PDF') {
+            throw new Error(`Not a valid PDF file: ${filename} (header: ${pdfHeader})`);
+          }
           text = await extractTextFromPDF(buffer);
+          if (!text || text.trim().length === 0) {
+            throw new Error(`PDF extraction returned empty text: ${filename}`);
+          }
         } else {
           text = extractTextFromMarkdown(buffer);
         }
