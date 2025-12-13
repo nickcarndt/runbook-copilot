@@ -61,34 +61,50 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedDetails, setCopiedDetails] = useState(false);
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
   const tooltipTriggerRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   // Calculate tooltip position based on trigger element
+  // Measures actual tooltip size after render for accurate positioning
   const updateTooltipPosition = useCallback((tooltipId: string) => {
     const trigger = tooltipTriggerRefs.current.get(tooltipId);
     if (!trigger) return;
 
-    const rect = trigger.getBoundingClientRect();
-    const tooltipWidth = 260; // max-w-[260px]
-    const tooltipHeight = 60; // approximate height
-    const offset = 8;
+    // Use requestAnimationFrame to measure tooltip after it renders
+    requestAnimationFrame(() => {
+      const tooltipElement = document.getElementById(tooltipId);
+      if (!tooltipElement) return;
 
-    // Center horizontally on icon
-    let left = rect.left + rect.width / 2 - tooltipWidth / 2;
-    // Position above icon
-    let top = rect.top - tooltipHeight - offset;
+      const triggerRect = trigger.getBoundingClientRect();
+      const tooltipRect = tooltipElement.getBoundingClientRect();
+      const offset = 8;
 
-    // Clamp to viewport
-    left = Math.max(8, Math.min(left, window.innerWidth - tooltipWidth - 8));
-    top = Math.max(8, top);
+      // Center horizontally on icon
+      let left = triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2;
+      // Position above icon
+      let top = triggerRect.top - tooltipRect.height - offset;
 
-    setTooltipPosition({ top, left });
+      // Clamp to viewport (with padding)
+      const padding = 8;
+      left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding));
+      top = Math.max(padding, top);
+
+      // Update position
+      tooltipElement.style.left = `${left}px`;
+      tooltipElement.style.top = `${top}px`;
+    });
   }, []);
 
   // Update position on scroll/resize when tooltip is visible
+  // Also measure and position tooltip when it first appears
   useEffect(() => {
     if (!showTooltip) return;
+
+    // Initial positioning after tooltip renders (use double RAF to ensure DOM is ready)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        updateTooltipPosition(showTooltip);
+      });
+    });
 
     const handleUpdate = () => {
       updateTooltipPosition(showTooltip);
@@ -628,7 +644,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                 </div>
               </div>
               <button
-                onClick={() => setShowDetails(!showDetails)}
+                onClick={() => {
+                  if (showDetails) {
+                    // Reset nested state when collapsing
+                    setShowMorePreviews(false);
+                    setShowAdvanced(false);
+                    setShowTooltip(null);
+                  }
+                  setShowDetails(!showDetails);
+                }}
                 className="ml-2 text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 flex-shrink-0 transition-colors"
                 type="button"
                 aria-expanded={showDetails}
@@ -802,8 +826,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         </div>
                       ))}
                       
-                      {/* Scoring toggle (show when details are open and there's at least 1 preview) */}
-                      {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length >= 1 && (
+                      {/* Scoring toggle (only show when "Show more" is expanded AND there are multiple previews) */}
+                      {showMorePreviews && uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
                           className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
@@ -832,14 +856,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       </div>
       
       {/* Portal tooltips - render all active tooltips */}
-      {typeof window !== 'undefined' && showTooltip && tooltipPosition && createPortal(
+      {typeof window !== 'undefined' && showTooltip && createPortal(
         <div
           id={showTooltip}
           role="tooltip"
-          className="fixed z-[9999] max-w-[260px] whitespace-normal rounded bg-slate-900 px-3 py-2 text-sm text-white shadow-lg pointer-events-none"
+          className="fixed z-[9999] max-w-[280px] whitespace-normal rounded bg-slate-900 px-2 py-1.5 text-xs text-white shadow-lg pointer-events-none"
           style={{
-            top: `${tooltipPosition.top}px`,
-            left: `${tooltipPosition.left}px`,
+            // Initial position (will be updated by updateTooltipPosition)
+            top: '0px',
+            left: '0px',
           }}
         >
           Cosine similarity between your question and this snippet.
