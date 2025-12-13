@@ -6,14 +6,6 @@ import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding
 import { searchRunbooks } from '@/lib/retrieval';
 import { put } from '@vercel/blob';
 
-// Suppress DEP0169 deprecation warnings (url.parse() from dependencies)
-if (typeof process !== 'undefined') {
-  process.on('warning', (w) => {
-    if (w?.code === 'DEP0169') return; // Ignore noisy dependency warning
-    console.warn(w);
-  });
-}
-
 // Timeout helper for async operations
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
