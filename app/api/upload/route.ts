@@ -213,14 +213,22 @@ export async function POST(request: NextRequest) {
         // Extract text (ensure buffer is passed correctly)
         let text: string;
         if (isPDF) {
-          // Validate PDF header (optional sanity check)
-          const pdfHeader = buffer.subarray(0, 4).toString();
-          if (pdfHeader !== '%PDF') {
-            throw new Error(`Not a valid PDF file: ${filename} (header: ${pdfHeader})`);
+          // Hard guard: validate buffer before parsing
+          if (!buffer || !buffer.length) {
+            throw new Error(`Empty PDF buffer: ${filename} size=${file.size} type=${file.type} buffer_len=${buffer?.length || 'undefined'}`);
           }
+          
+          // Hard guard: validate PDF header
+          const pdfHeader = buffer.slice(0, 4).toString();
+          if (pdfHeader !== '%PDF') {
+            throw new Error(`Not a PDF header: ${filename} (header: ${pdfHeader}, size=${file.size}, buffer_len=${buffer.length})`);
+          }
+          
+          // Call extractTextFromPDF with validated buffer
           text = await extractTextFromPDF(buffer);
+          
           if (!text || text.trim().length === 0) {
-            throw new Error(`PDF extraction returned empty text: ${filename}`);
+            throw new Error(`PDF extraction returned empty text: ${filename} (size=${file.size}, buffer_len=${buffer.length})`);
           }
         } else {
           text = extractTextFromMarkdown(buffer);
@@ -243,8 +251,10 @@ export async function POST(request: NextRequest) {
 
         processedFiles.push({ filename, chunks: chunkCount });
       } catch (fileError) {
-        // If processing a file fails, throw to outer catch
-        throw new Error(`Error processing file ${file.name}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+        // Include debug info in error message
+        const debugInfo = `file.name=${file.name}, file.type=${file.type}, file.size=${file.size}`;
+        const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
+        throw new Error(`Error processing file ${file.name}: ${errorMsg} (${debugInfo})`);
       }
     }
 
@@ -289,13 +299,17 @@ export async function POST(request: NextRequest) {
       // Ignore logging errors
     }
 
+    // Return clean JSON error with request_id and debug info
     return NextResponse.json(
       {
         request_id: requestId,
         error: { message: errorMessage, code: errorCode },
         latency_ms: latency,
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: { 'X-Request-ID': requestId },
+      }
     );
   }
 }

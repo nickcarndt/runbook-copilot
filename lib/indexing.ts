@@ -7,10 +7,28 @@ const openai = new OpenAI({
 
 // Extract text from PDF buffer
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  // Dynamic import to avoid build-time issues with pdf-parse
-  const pdfParse = (await import('pdf-parse')).default;
+  // Validate buffer is present and not empty
+  if (!buffer || !buffer.length) {
+    throw new Error(`PDF buffer is empty or undefined (buffer.length: ${buffer?.length || 'undefined'})`);
+  }
+  
+  // Validate PDF header
+  const header = buffer.slice(0, 4).toString();
+  if (header !== '%PDF') {
+    throw new Error(`Not a valid PDF file (header: ${header})`);
+  }
+  
+  // Dynamic import with ESM/CJS interop handling
+  const mod = await import('pdf-parse');
+  const pdfParse = (mod as any).default ?? (mod as any);
+  
+  // Ensure we're calling with the buffer
+  if (!pdfParse) {
+    throw new Error('Failed to import pdf-parse');
+  }
+  
   const data = await pdfParse(buffer);
-  return data.text;
+  return data.text ?? '';
 }
 
 // Extract text from Markdown (just return as-is, it's already text)
