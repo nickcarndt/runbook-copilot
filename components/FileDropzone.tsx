@@ -573,7 +573,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </div>
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className="ml-2 text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 flex-shrink-0 transition-colors"
+                className="ml-2 text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 flex-shrink-0 transition-colors"
                 type="button"
                 aria-expanded={showDetails}
                 aria-label={showDetails ? 'Hide details' : 'Show details'}
@@ -616,7 +616,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       setCopiedDetails(true);
                       setTimeout(() => setCopiedDetails(false), 1200);
                     }}
-                    className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors"
+                    className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
                     type="button"
                   >
                     {copiedDetails ? '✓ Copied!' : 'Copy details'}
@@ -657,10 +657,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                   <div
                                     id="tooltip-similarity-0"
                                     role="tooltip"
-                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 bg-gray-900 text-white text-xs rounded px-3 py-1.5 shadow-lg whitespace-normal max-w-[min(260px,80vw)]"
+                                    className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 max-w-[260px] whitespace-normal rounded bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"
                                   >
-                                    How close this snippet is to your question (cosine similarity).
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                    Cosine similarity between your question and this snippet.
+                                    <div className="absolute left-1/2 top-full -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
                                   </div>
                                 )}
                               </span>
@@ -682,7 +682,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                               setShowAdvanced(false);
                             }
                           }}
-                          className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors"
+                          className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
                           type="button"
                           aria-expanded={showMorePreviews}
                           aria-label={showMorePreviews ? 'Show less previews' : `Show ${uploadSuccessData.topRetrievalPreview.length - 1} more preview${uploadSuccessData.topRetrievalPreview.length - 1 > 1 ? 's' : ''}`}
@@ -723,10 +723,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                                     <div
                                       id={`tooltip-similarity-${i + 1}`}
                                       role="tooltip"
-                                      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 bg-gray-900 text-white text-xs rounded px-3 py-1.5 shadow-lg whitespace-normal max-w-[min(260px,80vw)]"
+                                      className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 max-w-[260px] whitespace-normal rounded bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"
                                     >
-                                      How close this snippet is to your question (cosine similarity).
-                                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                                      Cosine similarity between your question and this snippet.
+                                      <div className="absolute left-1/2 top-full -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
                                     </div>
                                   )}
                                 </span>
@@ -743,7 +743,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
                         <button
                           onClick={() => setShowAdvanced(!showAdvanced)}
-                          className="text-xs px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors"
+                          className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
                           type="button"
                           aria-expanded={showAdvanced}
                           aria-label={showAdvanced ? 'Hide scoring metrics' : 'Show scoring metrics'}
