@@ -592,6 +592,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           {uploadSuccessData.topRetrievalPreview[0].filename} (chunk {uploadSuccessData.topRetrievalPreview[0].chunkIndex})
                         </div>
                         <div className="text-gray-700 mt-1 leading-relaxed">{uploadSuccessData.topRetrievalPreview[0].textPreview}</div>
+                        {/* Show relevance for first preview only when advanced is enabled AND show more is expanded */}
+                        {showMorePreviews && showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
+                          <div className="text-gray-500 text-xs mt-1.5">
+                            Relevance: {(1 - uploadSuccessData.topRetrievalPreview[0].distance).toFixed(2)}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Show "Show more" link if there are more previews */}
