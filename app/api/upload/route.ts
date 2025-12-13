@@ -6,6 +6,24 @@ import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding
 import { searchRunbooks } from '@/lib/retrieval';
 import { put } from '@vercel/blob';
 
+// Suppress DEP0169 deprecation warnings (url.parse() from dependencies)
+if (typeof process !== 'undefined') {
+  process.on('warning', (w) => {
+    if (w?.code === 'DEP0169') return; // Ignore noisy dependency warning
+    console.warn(w);
+  });
+}
+
+// Timeout helper for async operations
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`Timeout: ${label} after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 // Build a deterministic verification query from extracted text
 // Tries to extract: first heading (H1/H2), or first rare phrase, or first 6-10 unique tokens
 function buildVerificationQuery(text: string): string {
@@ -277,26 +295,81 @@ export async function POST(request: NextRequest) {
           if (!text || text.trim().length === 0) {
             throw new Error(`PDF extraction returned empty text: ${filename} (size=${file.size}, buffer_len=${buffer.length})`);
           }
+          console.log(`[upload] pdf extracted: filename=${filename}, chars=${text.length}`);
         } else {
           text = extractTextFromMarkdown(buffer);
+          console.log(`[upload] markdown extracted: filename=${filename}, chars=${text.length}`);
         }
         
         // Store extracted text for verification query
         fileTexts.set(filename, text);
 
         // Create document record
-        const documentId = await insertDocument(filename);
+        let documentId: string;
+        try {
+          documentId = await insertDocument(filename);
+          console.log(`[upload] document created: filename=${filename}, id=${documentId}`);
+        } catch (docError) {
+          const errorMsg = docError instanceof Error ? docError.message : String(docError);
+          throw new Error(`Failed to create document record for ${filename}: ${errorMsg}`);
+        }
 
         // Chunk text (heading-aware for markdown)
-        const chunks = chunkText(text, isMarkdown);
-        let chunkCount = 0;
+        let chunks: string[];
+        try {
+          chunks = chunkText(text, isMarkdown);
+          console.log(`[upload] chunked: filename=${filename}, chunks=${chunks.length}`);
+        } catch (chunkError) {
+          const errorMsg = chunkError instanceof Error ? chunkError.message : String(chunkError);
+          throw new Error(`Failed to chunk text for ${filename}: ${errorMsg}`);
+        }
 
-        // Process chunks and create embeddings
+        // Process chunks and create embeddings with timeout
+        const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
+        const embeddingStartTime = Date.now();
+        console.log(`[upload] embedding start: filename=${filename}, model=${embeddingModel}, chunks=${chunks.length}`);
+        
+        let chunkCount = 0;
+        const embeddingPromises: Promise<void>[] = [];
+
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
-          const embedding = await createEmbedding(chunk);
-          await insertChunk(documentId, i, chunk, embedding);
-          chunkCount++;
+          const chunkIndex = i;
+          
+          // Create embedding with timeout
+          const embeddingPromise = (async () => {
+            try {
+              const embedding = await withTimeout(
+                createEmbedding(chunk),
+                30000, // 30s timeout per embedding
+                `embedding chunk ${chunkIndex} for ${filename}`
+              );
+              
+              // Insert chunk with timeout
+              await withTimeout(
+                insertChunk(documentId, chunkIndex, chunk, embedding),
+                15000, // 15s timeout per insert
+                `insert chunk ${chunkIndex} for ${filename}`
+              );
+              
+              chunkCount++;
+            } catch (chunkError) {
+              const errorMsg = chunkError instanceof Error ? chunkError.message : String(chunkError);
+              throw new Error(`Failed to process chunk ${chunkIndex} for ${filename}: ${errorMsg}`);
+            }
+          })();
+          
+          embeddingPromises.push(embeddingPromise);
+        }
+
+        // Wait for all embeddings and inserts to complete
+        try {
+          await Promise.all(embeddingPromises);
+          const embeddingDuration = Date.now() - embeddingStartTime;
+          console.log(`[upload] embedding done: filename=${filename}, count=${chunkCount}, ms=${embeddingDuration}`);
+        } catch (embeddingError) {
+          const errorMsg = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
+          throw new Error(`Failed to process embeddings for ${filename}: ${errorMsg}`);
         }
 
         processedFiles.push({ filename, chunks: chunkCount });
@@ -357,7 +430,7 @@ export async function POST(request: NextRequest) {
       // Ignore logging errors, but continue
     }
 
-    return NextResponse.json({
+    const response = {
       request_id: requestId,
       latency_ms: latency,
       files_processed: processedFiles.length,
@@ -366,7 +439,11 @@ export async function POST(request: NextRequest) {
       verified_searchable: verifiedSearchable,
       top_retrieval_preview: topRetrievalPreview,
       files: processedFiles,
-    });
+    };
+    
+    console.log(`[upload] response sent: request_id=${requestId}, files=${processedFiles.length}, chunks=${totalChunks}, latency_ms=${latency}`);
+    
+    return NextResponse.json(response);
   } catch (error) {
     const latency = Date.now() - startTime;
     let errorMessage = 'Unknown error';

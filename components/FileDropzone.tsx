@@ -196,7 +196,22 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         body: formData,
       });
 
-      const data = await parseResponse(response);
+      // Parse response safely - handle empty body and non-JSON
+      let data: any;
+      try {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const text = await response.text();
+          data = text ? JSON.parse(text) : {};
+        } else {
+          const text = await response.text();
+          throw new Error(`Non-JSON response: ${response.status} ${response.statusText} ${text.substring(0, 200)}`);
+        }
+      } catch (parseError) {
+        const errorMsg = parseError instanceof Error ? parseError.message : 'Failed to parse response';
+        setStatus(`Error: ${errorMsg} (Status: ${response.status})`);
+        return;
+      }
       
       if (response.ok) {
         // Build success message with inserted filenames
@@ -211,10 +226,14 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
           successMsg += ` (Search verification pending - content may not be immediately searchable)`;
         }
         
-        successMsg += ` Request ID: ${data.request_id}`;
+        successMsg += ` Request ID: ${data.request_id || 'unknown'}`;
         setStatus(successMsg);
       } else {
-        const errorCode = data.error?.code || '';
+        // Handle error response
+        const errorCode = data?.error?.code || '';
+        const errorMessage = data?.error?.message || data?.error || 'Upload failed';
+        const requestId = data?.request_id || 'unknown';
+        
         if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED' || errorCode === 'INVALID_UPLOAD_CODE')) {
           // Relock on 401
           if (demoOnly) {
@@ -224,21 +243,17 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
           }
           setStatus('Uploads are locked for the public demo. Ask Nick for an upload code.');
         } else if (errorCode === 'BLOB_NOT_CONFIGURED') {
-          setStatus(`Error: ${data.error?.message || 'Blob storage not configured'} (Request ID: ${data.request_id})`);
+          setStatus(`Error: ${errorMessage} (Request ID: ${requestId})`);
         } else {
-          const errorMsg = data.error?.message || data.error || 'Upload failed';
-          setStatus(`Error: ${errorMsg} (${errorCode || 'UNKNOWN'})`);
+          setStatus(`Error: ${errorMessage} (${errorCode || 'UNKNOWN'}, Request ID: ${requestId})`);
         }
       }
     } catch (error) {
       console.error('Upload error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      if (errorMessage.includes('Non-JSON response')) {
-        setStatus(`Error: ${errorMessage}`);
-      } else {
-        setStatus(`Error: ${errorMessage}`);
-      }
+      setStatus(`Error: ${errorMessage}`);
     } finally {
+      // Always clear uploading state
       setUploading(false);
     }
   };
