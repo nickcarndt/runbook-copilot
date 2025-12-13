@@ -2,26 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '@/lib/db';
 
-// Demo safety gate
-function checkDemoToken(request: NextRequest): boolean {
-  const demoToken = process.env.RBC_DEMO_TOKEN;
-  if (!demoToken) return true; // No token set, allow all
-  
-  const headerToken = request.headers.get('x-rbc-token');
-  return headerToken === demoToken;
-}
-
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const requestId = uuidv4();
   
   try {
-    // Demo safety gate
-    if (!checkDemoToken(request)) {
+    // Disable debug endpoints in public demo mode
+    if (process.env.PUBLIC_DEMO === 'true') {
       return NextResponse.json(
-        { error: 'Unauthorized', request_id: requestId },
-        { status: 401 }
+        { error: 'Debug endpoints are disabled in public demo mode', request_id: requestId },
+        { status: 403 }
       );
     }
 

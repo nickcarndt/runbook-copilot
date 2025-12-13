@@ -9,7 +9,9 @@ Agentic RAG runbook copilot: upload runbooks → ask questions → get step-by-s
 
 **Run it in 30s**: Upload PDF/Markdown runbooks, ask "How do I mitigate high memory usage?", get cited answers, and draft incident updates.
 
-> 📸 *Screenshot placeholder: Add a GIF or screenshot showing the upload → question → answer flow*
+## Demo
+
+> TODO: Add GIF or screenshot showing the upload → question → answer flow
 
 ## Features
 
@@ -30,6 +32,12 @@ Q --> DB
 Q --> LLM[OpenAI]
 S --> LLM
 ```
+
+**Tech stack:**
+- **Next.js App Router** - Server-side API routes and client components
+- **Postgres + pgvector** - Vector similarity search for retrieval
+- **LlamaIndex.TS** - Agent/tool calling for RAG orchestration
+- **Vercel serverless** - Edge-optimized deployment
 
 ## Setup
 
