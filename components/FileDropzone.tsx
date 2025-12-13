@@ -33,9 +33,11 @@ interface UploadSuccessData {
   topRetrievalPreview?: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }>;
 }
 
-// Debug logging flag (set DEBUG_UPLOADS=true in env to enable verbose logs)
+// Debug logging flag (set NEXT_PUBLIC_DEBUG_UPLOADS=true in env to enable verbose logs)
 const DEBUG_UPLOADS = typeof window !== 'undefined' 
-  ? (window as any).__DEBUG_UPLOADS === true || process.env.NODE_ENV === 'development'
+  ? (window as any).__DEBUG_UPLOADS === true || 
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_DEBUG_UPLOADS === 'true') ||
+    process.env.NODE_ENV === 'development'
   : false;
 
 const debugLog = (...args: any[]) => {
