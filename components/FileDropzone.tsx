@@ -57,6 +57,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [showDetails, setShowDetails] = useState(false);
   const [showMorePreviews, setShowMorePreviews] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [copiedDetails, setCopiedDetails] = useState(false);
 
   // Load upload code and verify on mount
   // Only unlock if BOTH token exists AND verified flag is true
@@ -265,6 +266,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
     setShowDetails(false);
     setShowMorePreviews(false);
     setShowAdvanced(false);
+    setCopiedDetails(false);
     setUploading(true);
     setStatus('Uploading and processing files...');
     
@@ -548,7 +550,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               </div>
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className="ml-2 text-xs text-green-700 hover:text-green-900 underline"
+                className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
               >
                 {showDetails ? 'Hide' : 'Show'} details
               </button>
@@ -576,10 +578,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       ].join('\n');
                       
                       await navigator.clipboard.writeText(details);
+                      setCopiedDetails(true);
+                      setTimeout(() => setCopiedDetails(false), 1200);
                     }}
-                    className="text-green-700 hover:text-green-900 underline text-xs"
+                    className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
                   >
-                    Copy details
+                    {copiedDetails ? 'Copied!' : 'Copy details'}
                   </button>
                 </div>
                 {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
