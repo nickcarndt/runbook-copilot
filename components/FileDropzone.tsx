@@ -33,6 +33,17 @@ interface UploadSuccessData {
   topRetrievalPreview?: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }>;
 }
 
+// Debug logging flag (set DEBUG_UPLOADS=true in env to enable verbose logs)
+const DEBUG_UPLOADS = typeof window !== 'undefined' 
+  ? (window as any).__DEBUG_UPLOADS === true || process.env.NODE_ENV === 'development'
+  : false;
+
+const debugLog = (...args: any[]) => {
+  if (DEBUG_UPLOADS) {
+    console.log(...args);
+  }
+};
+
 export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onUploadSuccess, onUploadStart }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>(''); // Upload status only
@@ -55,7 +66,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
     
     // Auto-clean: if verified flag exists but token is missing/blank, remove both
     if (verified && !hasToken) {
-      console.log('[FileDropzone] Auto-cleaning stale verified flag (token missing)');
+      debugLog('[FileDropzone] Auto-cleaning stale verified flag (token missing)');
       localStorage.removeItem('rbc_upload_verified');
       localStorage.removeItem('rbc_upload_token');
       setUploadAuth('locked');
@@ -201,29 +212,29 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    console.log('[FileDropzone] handleDrop called, uploadsEnabled:', uploadsEnabled);
+    debugLog('[FileDropzone] handleDrop called, uploadsEnabled:', uploadsEnabled);
     if (!uploadsEnabled) {
-      console.log('[FileDropzone] Uploads disabled, returning early');
+      debugLog('[FileDropzone] Uploads disabled, returning early');
       return;
     }
     const files = Array.from(e.dataTransfer.files) as File[];
-    console.log('[FileDropzone] Dropped files:', files.length);
+    debugLog('[FileDropzone] Dropped files:', files.length);
     await uploadFiles(files);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('[FileDropzone] handleFileSelect called, uploadsEnabled:', uploadsEnabled);
+    debugLog('[FileDropzone] handleFileSelect called, uploadsEnabled:', uploadsEnabled);
     if (!uploadsEnabled) {
-      console.log('[FileDropzone] Uploads disabled, returning early');
+      debugLog('[FileDropzone] Uploads disabled, returning early');
       return;
     }
     const files = Array.from(e.target.files || []) as File[];
-    console.log('[FileDropzone] Selected files:', files.length);
+    debugLog('[FileDropzone] Selected files:', files.length);
     await uploadFiles(files);
   };
 
   const uploadFiles = async (files: File[]) => {
-    console.log('[FileDropzone] uploadFiles called with', files.length, 'files');
+    debugLog('[FileDropzone] uploadFiles called with', files.length, 'files');
     
     // Filter to PDF/MD only
     const validFiles = files.filter(
@@ -234,15 +245,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
         file.name.endsWith('.markdown')
     );
 
-    console.log('[FileDropzone] validFiles:', validFiles.length, validFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
+    debugLog('[FileDropzone] validFiles:', validFiles.length, validFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
 
     if (validFiles.length === 0) {
-      console.log('[FileDropzone] No valid files, returning early');
+      debugLog('[FileDropzone] No valid files, returning early');
       setStatus('Error: Only PDF and Markdown files are supported');
       return;
     }
 
-    console.log('[FileDropzone] Setting uploading=true, status="Uploading..."');
+    debugLog('[FileDropzone] Setting uploading=true, status="Uploading..."');
     // Clear previous status only when starting a new upload
     // Clear previous status and success data when starting a new upload
     setStatus('');
@@ -261,7 +272,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       const formData = new FormData();
       for (const file of validFiles) {
         formData.append('files', file);
-        console.log('[FileDropzone] Added file to FormData:', file.name, file.size, 'bytes');
+        debugLog('[FileDropzone] Added file to FormData:', file.name, file.size, 'bytes');
       }
 
       // Build headers - include upload token if present
@@ -269,12 +280,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       const headers: Record<string, string> = {};
       if (uploadCode) {
         headers['x-upload-token'] = uploadCode;
-        console.log('[FileDropzone] Including upload token in headers');
+        debugLog('[FileDropzone] Including upload token in headers');
       } else {
-        console.log('[FileDropzone] No upload token - uploads may be locked');
+        debugLog('[FileDropzone] No upload token - uploads may be locked');
       }
 
-      console.log('[FileDropzone] Starting fetch to /api/upload...');
+      debugLog('[FileDropzone] Starting fetch to /api/upload...');
       const fetchStartTime = Date.now();
       
       // Upload files directly to server
@@ -285,7 +296,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       });
 
       const fetchDuration = Date.now() - fetchStartTime;
-      console.log('[FileDropzone] Fetch completed:', {
+      debugLog('[FileDropzone] Fetch completed:', {
         status: response.status,
         ok: response.ok,
         duration: fetchDuration + 'ms',
@@ -293,10 +304,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       });
 
       // Read response body as text first, then parse JSON
-      console.log('[FileDropzone] Reading response body...');
+      debugLog('[FileDropzone] Reading response body...');
       const raw = await response.text();
-      console.log('[FileDropzone] Response body length:', raw.length, 'chars');
-      console.log('[FileDropzone] Response body preview:', raw.substring(0, 200));
+      debugLog('[FileDropzone] Response body length:', raw.length, 'chars');
+      debugLog('[FileDropzone] Response body preview:', raw.substring(0, 200));
       
       let data: any = null;
       let parseSucceeded = false;
@@ -304,14 +315,16 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       try {
         data = raw ? JSON.parse(raw) : {};
         parseSucceeded = true;
-        console.log('[FileDropzone] JSON parse succeeded:', Object.keys(data));
+        debugLog('[FileDropzone] JSON parse succeeded:', Object.keys(data));
       } catch (parseError) {
         parseSucceeded = false;
-        console.error('[FileDropzone] Failed to parse response as JSON:', parseError, 'Raw response:', raw.substring(0, 200));
+        if (DEBUG_UPLOADS) {
+          console.error('[FileDropzone] Failed to parse response as JSON:', parseError, 'Raw response:', raw.substring(0, 200));
+        }
       }
 
       // Log response details for debugging
-      console.log('[FileDropzone] Upload response summary:', {
+      debugLog('[FileDropzone] Upload response summary:', {
         status: response.status,
         ok: response.ok,
         parseSucceeded,
@@ -326,7 +339,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       });
 
       if (!response.ok) {
-        console.log('[FileDropzone] Response not OK, handling error...');
+        debugLog('[FileDropzone] Response not OK, handling error...');
         // Show real server message
         const errorMessage = data?.error?.message || data?.error || raw || `Upload failed: ${response.status}`;
         const requestId = data?.request_id || 'unknown';
@@ -347,7 +360,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       }
 
       // Success - store data for compact display and suggested questions
-      console.log('[FileDropzone] Response OK, storing success data...');
+      debugLog('[FileDropzone] Response OK, storing success data...');
       const requestId = data?.request_id || 'unknown';
       const filenames = data.inserted_filenames || [];
       const chunks = data.total_chunks || 0;
@@ -369,15 +382,17 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       }
       console.log('[FileDropzone] Status set, about to exit try block');
     } catch (error) {
-      console.error('[FileDropzone] Upload error caught:', error);
+      if (DEBUG_UPLOADS) {
+        console.error('[FileDropzone] Upload error caught:', error);
+      }
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      console.log('[FileDropzone] Setting error status:', errorMessage);
+      debugLog('[FileDropzone] Setting error status:', errorMessage);
       setStatus(`Error: ${errorMessage}`);
     } finally {
       // Always clear uploading state - this is critical
-      console.log('[FileDropzone] Finally block: setting uploading=false');
+      debugLog('[FileDropzone] Finally block: setting uploading=false');
       setUploading(false);
-      console.log('[FileDropzone] Upload flow complete');
+      debugLog('[FileDropzone] Upload flow complete');
     }
   };
 
@@ -460,6 +475,19 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               Optional — needed only to upload your own runbooks.
             </p>
           )}
+          {uploadAuth === 'unlocked' && hasToken && (
+            <button
+              onClick={() => {
+                localStorage.removeItem('rbc_upload_token');
+                localStorage.removeItem('rbc_upload_verified');
+                setUploadCode('');
+                setUploadAuth('locked');
+              }}
+              className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline"
+            >
+              Forget upload code
+            </button>
+          )}
         </div>
       )}
 
@@ -521,16 +549,38 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
             </div>
             {showDetails && (
               <div className="mt-3 pt-3 border-t border-green-200 space-y-2 text-xs">
-                <div>
-                  <span className="font-medium">Request ID:</span> {uploadSuccessData.requestId}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-medium">Request ID:</span> {uploadSuccessData.requestId}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(uploadSuccessData.requestId);
+                    }}
+                    className="text-green-700 hover:text-green-900 underline text-xs"
+                  >
+                    Copy
+                  </button>
                 </div>
                 {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
                   <div>
-                    <span className="font-medium">Retrieval preview:</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium">Retrieval preview:</span>
+                    </div>
                     <div className="mt-1 space-y-1">
                       {uploadSuccessData.topRetrievalPreview.map((result, i) => (
                         <div key={i} className="bg-white p-2 rounded border border-green-200">
-                          <div className="font-medium">{result.filename} (chunk {result.chunkIndex})</div>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="font-medium">{result.filename} (chunk {result.chunkIndex})</div>
+                            <button
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(result.textPreview);
+                              }}
+                              className="text-green-700 hover:text-green-900 underline text-xs"
+                            >
+                              Copy
+                            </button>
+                          </div>
                           <div className="text-gray-600 mt-1">{result.textPreview}</div>
                           {result.distance !== undefined && (
                             <div className="text-gray-500 text-xs mt-1">Distance: {result.distance.toFixed(4)}</div>

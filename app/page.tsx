@@ -98,16 +98,12 @@ export default function Home() {
   };
 
   const handleUploadSuccess = (data: { filenames: string[]; chunks: number; requestId: string }) => {
-    // Generate suggested questions based on uploaded filenames
-    const filename = data.filenames[0] || 'runbook';
-    const baseName = filename.replace(/\.(pdf|md|markdown)$/i, '').replace(/[_-]/g, ' ');
-    
-    // Generate 2-3 contextual questions based on filename
+    // Generate human-friendly suggested questions for demo flow
     const questions = [
-      `How do I troubleshoot ${baseName}?`,
-      `What are the steps for ${baseName}?`,
-      `What should I do if ${baseName} fails?`,
-    ].slice(0, 3);
+      "What's the fastest safe triage for this incident?",
+      "What are the first 5 commands to run?",
+      "Draft a Slack update for this incident",
+    ];
     
     setSuggestedQuestions(questions);
   };
@@ -115,6 +111,17 @@ export default function Home() {
   const handleUploadStart = () => {
     // Clear suggested questions when new upload starts
     setSuggestedQuestions([]);
+  };
+
+  const handleResetDemo = () => {
+    // Clear chat, suggested questions, and status (not database)
+    setSuggestedQuestions([]);
+    setSources([]);
+    setDebugInfo(null);
+    setSlackSummary('');
+    setLastQuestion('');
+    setLastAnswer('');
+    setErrorRequestId('');
   };
 
   return (
@@ -129,7 +136,15 @@ export default function Home() {
 
       {/* Upload Section */}
       <section className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Upload</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Upload</h2>
+          <button
+            onClick={handleResetDemo}
+            className="text-xs text-gray-600 hover:text-gray-800 underline"
+          >
+            Reset demo
+          </button>
+        </div>
         {/* Render FileDropzone once - publicDemo prop will update but component won't remount */}
         <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} onUploadStart={handleUploadStart} />
       </section>

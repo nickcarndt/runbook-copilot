@@ -142,7 +142,10 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuest
         onAnswerComplete(question, assistantMessage);
       }
     } catch (error) {
-      console.error('Chat error:', error);
+      // Only log errors in development or if DEBUG_UPLOADS is enabled
+      if (process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && (window as any).__DEBUG_UPLOADS === true)) {
+        console.error('Chat error:', error);
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Failed to get response' }]);
     } finally {
       setLoading(false);
