@@ -3,8 +3,47 @@ import { v4 as uuidv4 } from 'uuid';
 import { Buffer } from 'buffer';
 import { logUpload } from '@/lib/db';
 import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
-import { searchRunbooks } from '@/lib/agents';
+import { searchRunbooks } from '@/lib/retrieval';
 import { put } from '@vercel/blob';
+
+// Build a deterministic verification query from extracted text
+// Tries to extract: first heading (H1/H2), or first rare phrase, or first 6-10 unique tokens
+function buildVerificationQuery(text: string): string {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  
+  // Try to find first heading (H1/H2)
+  for (const line of lines.slice(0, 20)) {
+    if (/^#{1,2}\s+/.test(line)) {
+      // Extract heading text (remove # and trim)
+      const headingText = line.replace(/^#+\s+/, '').trim();
+      if (headingText.length >= 10 && headingText.length <= 100) {
+        return headingText;
+      }
+    }
+  }
+  
+  // Try to find a unique phrase (3-5 words that appear early)
+  for (const line of lines.slice(0, 10)) {
+    const words = line.split(/\s+/).filter(w => w.length >= 4);
+    if (words.length >= 3) {
+      // Take first 3-5 words as a phrase
+      const phrase = words.slice(0, Math.min(5, words.length)).join(' ');
+      if (phrase.length >= 10 && phrase.length <= 80) {
+        return phrase;
+      }
+    }
+  }
+  
+  // Fallback: extract rare-ish tokens (longer words, unique)
+  const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 5);
+  const uniqueTokens = Array.from(new Set(tokens));
+  if (uniqueTokens.length >= 3) {
+    return uniqueTokens.slice(0, Math.min(8, uniqueTokens.length)).join(' ');
+  }
+  
+  // Last resort: first 50 chars
+  return text.substring(0, 50).trim();
+}
 
 // Upload token gate
 function checkUploadToken(request: NextRequest): boolean {
@@ -154,6 +193,7 @@ export async function POST(request: NextRequest) {
     // Process files
     let totalSize = 0;
     const processedFiles: Array<{ filename: string; chunks: number }> = [];
+    const fileTexts: Map<string, string> = new Map(); // Store extracted text for verification query
 
     for (const file of files) {
       try {
@@ -240,6 +280,9 @@ export async function POST(request: NextRequest) {
         } else {
           text = extractTextFromMarkdown(buffer);
         }
+        
+        // Store extracted text for verification query
+        fileTexts.set(filename, text);
 
         // Create document record
         const documentId = await insertDocument(filename);
@@ -269,25 +312,37 @@ export async function POST(request: NextRequest) {
     const totalChunks = processedFiles.reduce((sum, f) => sum + f.chunks, 0);
     const insertedFilenames = processedFiles.map(f => f.filename);
 
-    // Run a test query to verify the content is searchable
+    // Run a test query to verify the content is searchable (scoped to inserted files)
     let topRetrievalPreview: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }> | null = null;
-    try {
-      // Use a simple generic query that should match any runbook content
-      const testQuery = processedFiles.length > 0 
-        ? `runbook ${processedFiles[0].filename.split('.')[0]}` // Use first filename as part of query
-        : 'runbook documentation';
-      
-      const testResults = await searchRunbooks(testQuery, 3); // Get top 3 results
-      topRetrievalPreview = testResults.map(result => ({
-        filename: result.filename,
-        chunkIndex: result.chunkIndex,
-        textPreview: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : ''),
-        distance: result.distance,
-        keywordScore: result.keywordScore,
-      }));
-    } catch (retrievalError) {
-      // Log but don't fail - retrieval preview is optional
-      console.warn('Failed to generate retrieval preview:', retrievalError);
+    let verifiedSearchable = false;
+    
+    if (processedFiles.length > 0 && fileTexts.size > 0) {
+      try {
+        // Build deterministic verification query from first file's extracted text
+        const firstFilename = processedFiles[0].filename;
+        const firstText = fileTexts.get(firstFilename);
+        const verificationQuery = firstText ? buildVerificationQuery(firstText) : firstFilename.split('.')[0];
+        
+        // Search scoped to only the inserted filenames
+        const testResults = await searchRunbooks(verificationQuery, 3, { filenames: insertedFilenames });
+        
+        // Filter to only results from inserted files (double-check)
+        const scopedResults = testResults.filter(result => insertedFilenames.includes(result.filename));
+        
+        if (scopedResults.length > 0) {
+          verifiedSearchable = true;
+          topRetrievalPreview = scopedResults.slice(0, 3).map(result => ({
+            filename: result.filename,
+            chunkIndex: result.chunkIndex,
+            textPreview: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : ''),
+            distance: result.distance,
+            keywordScore: result.keywordScore,
+          }));
+        }
+      } catch (retrievalError) {
+        // Log but don't fail - retrieval preview is optional
+        console.warn('Failed to generate retrieval preview:', retrievalError);
+      }
     }
 
     // Log success
@@ -308,6 +363,7 @@ export async function POST(request: NextRequest) {
       files_processed: processedFiles.length,
       total_chunks: totalChunks,
       inserted_filenames: insertedFilenames,
+      verified_searchable: verifiedSearchable,
       top_retrieval_preview: topRetrievalPreview,
       files: processedFiles,
     });

@@ -187,10 +187,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         let successMsg = `Success! Indexed ${data.inserted_filenames?.length || data.files_processed || 0} file(s): ${(data.inserted_filenames || []).join(', ')}. `;
         successMsg += `${data.total_chunks || 0} chunks created.`;
         
-        // Add retrieval preview if available
-        if (data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
+        // Add verification status
+        if (data.verified_searchable === true && data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
           const firstResult = data.top_retrieval_preview[0];
           successMsg += ` Verified searchable: "${firstResult.textPreview}" (from ${firstResult.filename})`;
+        } else if (data.verified_searchable === false) {
+          successMsg += ` (Search verification pending - content may not be immediately searchable)`;
         }
         
         successMsg += ` Request ID: ${data.request_id}`;
