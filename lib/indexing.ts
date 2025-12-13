@@ -12,6 +12,11 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
     throw new Error(`PDF buffer is empty or undefined (buffer.length: ${buffer?.length || 'undefined'}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer?.constructor?.name || 'undefined'})`);
   }
   
+  // Ensure buffer is actually a Buffer instance
+  if (!(buffer instanceof Buffer)) {
+    throw new Error(`Buffer is not a Buffer instance (type: ${typeof buffer}, constructor: ${buffer.constructor.name})`);
+  }
+  
   // Validate PDF header
   const first4 = buffer.subarray(0, 4).toString('utf8');
   if (first4 !== '%PDF') {
@@ -19,23 +24,95 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   }
   
   // Log what we're about to pass to pdf-parse
-  console.log(`Calling pdf-parse with buffer: length=${buffer.length}, type=${typeof buffer}, constructor=${buffer.constructor.name}, header="${first4}"`);
+  console.log(`[extractTextFromPDF] About to call pdf-parse: length=${buffer.length}, type=${typeof buffer}, constructor=${buffer.constructor.name}, header="${first4}", isBuffer=${buffer instanceof Buffer}`);
   
   // Dynamic import with ESM/CJS interop handling
+  // pdf-parse can export as default, named export, or the module itself
   const mod = await import('pdf-parse');
-  const pdfParse = (mod as any).default ?? mod;
+  let pdfParse: any;
   
-  // Ensure we're calling with the buffer
-  if (!pdfParse) {
-    throw new Error('Failed to import pdf-parse');
+  // Try different ways pdf-parse might be exported
+  if (typeof mod === 'function') {
+    pdfParse = mod;
+  } else if (mod.default && typeof mod.default === 'function') {
+    pdfParse = mod.default;
+  } else if (mod.pdfParse && typeof mod.pdfParse === 'function') {
+    pdfParse = mod.pdfParse;
+  } else {
+    // Last resort: try the module itself
+    pdfParse = mod;
   }
   
-  // Call pdf-parse with validated buffer
-  const parsed = await pdfParse(buffer);
+  // Ensure we're calling with the buffer
+  if (!pdfParse || typeof pdfParse !== 'function') {
+    console.error(`[extractTextFromPDF] Failed to import pdf-parse: mod type=${typeof mod}, mod.default=${typeof mod.default}, mod keys=${Object.keys(mod).join(',')}`);
+    throw new Error(`Failed to import pdf-parse (type: ${typeof pdfParse}, mod type: ${typeof mod})`);
+  }
+  
+  console.log(`[extractTextFromPDF] Successfully imported pdf-parse: type=${typeof pdfParse}, isFunction=${typeof pdfParse === 'function'}`);
+  
+  // Create a defensive copy to ensure we're passing valid data
+  // pdf-parse can accept Buffer or Uint8Array, so ensure we have a proper instance
+  const bufferCopy = Buffer.isBuffer(buffer) ? Buffer.from(buffer) : Buffer.from(buffer);
+  
+  // Final validation before calling
+  if (!bufferCopy || bufferCopy.length === 0) {
+    throw new Error(`Buffer copy is invalid: length=${bufferCopy?.length || 'undefined'}`);
+  }
+  
+  console.log(`[extractTextFromPDF] Calling pdfParse with bufferCopy: length=${bufferCopy.length}, type=${typeof bufferCopy}, constructor=${bufferCopy.constructor.name}, isBuffer=${Buffer.isBuffer(bufferCopy)}`);
+  
+  // CRITICAL: Verify argument is defined right before calling
+  if (!bufferCopy) {
+    throw new Error(`CRITICAL: bufferCopy is undefined/null right before pdfParse call`);
+  }
+  if (bufferCopy.length === 0) {
+    throw new Error(`CRITICAL: bufferCopy.length is 0 right before pdfParse call`);
+  }
+  
+  // Try passing as Buffer first, fallback to Uint8Array if needed
+  let parsed;
+  try {
+    // Double-check we're passing the buffer - log the actual argument
+    const argToPass = bufferCopy;
+    console.log(`[extractTextFromPDF] About to call pdfParse(argToPass) where argToPass.length=${argToPass.length}, argToPass type=${typeof argToPass}, argToPass constructor=${argToPass.constructor.name}, argToPass === bufferCopy=${argToPass === bufferCopy}`);
+    
+    // Verify the function signature - pdf-parse should accept buffer as first argument
+    console.log(`[extractTextFromPDF] pdfParse function length (expected args): ${pdfParse.length}`);
+    
+    // Call with explicit argument to ensure it's passed
+    // Try both direct call and .call() to ensure argument is passed
+    if (pdfParse.length === 1) {
+      // Function expects 1 argument - call directly
+      parsed = await pdfParse(argToPass);
+    } else {
+      // Function might have different signature - try .call() to be explicit
+      parsed = await pdfParse.call(null, argToPass);
+    }
+    
+    console.log(`[extractTextFromPDF] pdfParse succeeded, parsed type=${typeof parsed}, parsed keys=${parsed ? Object.keys(parsed).join(',') : 'null'}`);
+  } catch (parseError: any) {
+    console.error(`[extractTextFromPDF] pdfParse failed: ${parseError.message}, code=${parseError.code}, stack=${parseError.stack?.substring(0, 200)}`);
+    
+    // If Buffer doesn't work, try Uint8Array
+    if (parseError?.message?.includes('05-versions-space') || parseError?.code === 'ENOENT') {
+      console.log(`[extractTextFromPDF] Buffer failed with ENOENT, trying Uint8Array...`);
+      const uint8Array = new Uint8Array(bufferCopy);
+      console.log(`[extractTextFromPDF] Calling pdfParse with Uint8Array: length=${uint8Array.length}, type=${typeof uint8Array}`);
+      parsed = await pdfParse(uint8Array);
+    } else {
+      throw parseError;
+    }
+  }
+  
+  if (!parsed) {
+    throw new Error(`pdf-parse returned null/undefined (buffer.length: ${buffer.length})`);
+  }
+  
   const text = parsed?.text ?? '';
   
   if (!text) {
-    throw new Error(`PDF extraction returned empty text (buffer.length: ${buffer.length})`);
+    throw new Error(`PDF extraction returned empty text (buffer.length: ${buffer.length}, parsed: ${JSON.stringify(Object.keys(parsed || {}))})`);
   }
   
   return text;

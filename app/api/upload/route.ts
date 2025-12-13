@@ -226,8 +226,12 @@ export async function POST(request: NextRequest) {
             throw new Error(`Not a PDF header: ${filename} (header: ${pdfHeader}, size=${file.size}, buffer_len=${buffer.length})`);
           }
           
-          // Call extractTextFromPDF with validated buffer
-          text = await extractTextFromPDF(buffer);
+          // Log before calling extractTextFromPDF
+          console.log(`[upload] About to call extractTextFromPDF: filename=${filename}, buffer.length=${buffer.length}, buffer_type=${typeof buffer}, buffer_constructor=${buffer.constructor.name}, header="${pdfHeader}"`);
+          
+          // Call extractTextFromPDF with validated buffer (ensure it's a Buffer)
+          const bufferForPdf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+          text = await extractTextFromPDF(bufferForPdf);
           
           if (!text || text.trim().length === 0) {
             throw new Error(`PDF extraction returned empty text: ${filename} (size=${file.size}, buffer_len=${buffer.length})`);
