@@ -539,7 +539,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
         {uploading ? (
           <div className="text-sm text-gray-600">Uploading and processing files...</div>
         ) : status === 'success' && uploadSuccessData ? (
-          <div className="text-sm p-3 rounded border text-green-600 bg-green-50 border-green-200">
+          <div className="text-sm p-2.5 rounded border text-green-600 bg-green-50/80 border-green-200">
             <div className="flex items-start justify-between">
               <div>
                 <span className="font-medium">✅ Indexed {uploadSuccessData.filenames.join(', ')}.</span>
@@ -552,6 +552,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                 onClick={() => setShowDetails(!showDetails)}
                 className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
                 type="button"
+                aria-expanded={showDetails}
+                aria-label={showDetails ? 'Hide details' : 'Show details'}
               >
                 {showDetails ? 'Hide' : 'Show'} details
               </button>
@@ -597,10 +599,11 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           {uploadSuccessData.topRetrievalPreview[0].filename} (chunk {uploadSuccessData.topRetrievalPreview[0].chunkIndex})
                         </div>
                         <div className="text-gray-700 mt-1 leading-relaxed">{uploadSuccessData.topRetrievalPreview[0].textPreview}</div>
-                        {/* Show relevance for first preview only when advanced is enabled AND show more is expanded */}
+                        {/* Show similarity for first preview only when advanced is enabled AND show more is expanded */}
+                        {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                         {showMorePreviews && showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
                           <div className="text-gray-500 text-xs mt-1.5">
-                            Similarity: {(1 / (1 + uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
+                            Similarity: {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
                           </div>
                         )}
                       </div>
@@ -609,7 +612,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       {uploadSuccessData.topRetrievalPreview.length > 1 && !showMorePreviews && (
                         <button
                           onClick={() => setShowMorePreviews(true)}
-                          className="text-green-700 hover:text-green-900 underline text-xs"
+                          className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
+                          type="button"
+                          aria-expanded={false}
+                          aria-label={`Show ${uploadSuccessData.topRetrievalPreview.length - 1} more preview${uploadSuccessData.topRetrievalPreview.length - 1 > 1 ? 's' : ''}`}
                         >
                           Show more ({uploadSuccessData.topRetrievalPreview.length - 1})
                         </button>
@@ -622,9 +628,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                             {result.filename} (chunk {result.chunkIndex})
                           </div>
                           <div className="text-gray-700 mt-1 leading-relaxed">{result.textPreview}</div>
+                          {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
                           {showAdvanced && result.distance !== undefined && (
                             <div className="text-gray-500 text-xs mt-1.5">
-                              Similarity: {(1 / (1 + result.distance)).toFixed(2)} (higher is better)
+                              Similarity: {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
                             </div>
                           )}
                         </div>
@@ -632,14 +639,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       
                       {/* Advanced toggle (only show when "Show more" is expanded) */}
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
-                        <div>
-                          <button
-                            onClick={() => setShowAdvanced(!showAdvanced)}
-                            className="text-gray-600 hover:text-gray-800 underline text-xs"
-                          >
-                            {showAdvanced ? 'Hide' : 'Show'} advanced
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => setShowAdvanced(!showAdvanced)}
+                          className="text-gray-600 hover:text-gray-800 underline text-xs focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 rounded px-1"
+                          type="button"
+                          aria-expanded={showAdvanced}
+                          aria-label={showAdvanced ? 'Hide advanced metrics' : 'Show advanced metrics'}
+                        >
+                          {showAdvanced ? 'Hide' : 'Show'} advanced
+                        </button>
                       )}
                     </div>
                   </div>
