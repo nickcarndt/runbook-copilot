@@ -25,6 +25,7 @@ export default function Home() {
   const [slackLoading, setSlackLoading] = useState(false);
   const [lastQuestion, setLastQuestion] = useState<string>('');
   const [lastAnswer, setLastAnswer] = useState<string>('');
+  const [copied, setCopied] = useState(false);
 
   const handleSourcesUpdate = (newSources: Source[], requestId: string, latency: number) => {
     setSources(newSources);
@@ -63,9 +64,11 @@ export default function Home() {
     }
   };
 
-  const handleCopySlackSummary = () => {
+  const handleCopySlackSummary = async () => {
     if (slackSummary) {
-      navigator.clipboard.writeText(slackSummary);
+      await navigator.clipboard.writeText(slackSummary);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
     }
   };
 
@@ -104,32 +107,33 @@ export default function Home() {
       )}
 
       {/* Draft Slack Update */}
-      {lastAnswer && (
-        <section className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Draft Slack Update</h2>
-          <button
-            onClick={handleDraftSlackUpdate}
-            disabled={slackLoading}
-            className="mb-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
-          >
-            {slackLoading ? 'Generating...' : 'Draft Slack Update'}
-          </button>
-          {slackSummary && (
-            <div className="border rounded p-4 bg-gray-50">
-              <div className="flex justify-between items-start mb-2">
-                <div className="text-sm font-medium">Summary:</div>
-                <button
-                  onClick={handleCopySlackSummary}
-                  className="text-xs text-blue-600 hover:text-blue-800"
-                >
-                  Copy
-                </button>
-              </div>
-              <pre className="text-sm whitespace-pre-wrap">{slackSummary}</pre>
+      <section className="mb-8">
+        <h2 className="text-xl font-semibold mb-4">Draft Slack Update</h2>
+        <button
+          onClick={handleDraftSlackUpdate}
+          disabled={slackLoading || !lastQuestion || !lastAnswer}
+          className="mb-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+        >
+          {slackLoading ? 'Generating...' : 'Draft Slack Update'}
+        </button>
+        {(!lastQuestion || !lastAnswer) && (
+          <div className="text-sm text-gray-500 mb-2">Ask a question first</div>
+        )}
+        {slackSummary && (
+          <div className="border rounded p-4 bg-gray-50">
+            <div className="flex justify-between items-start mb-2">
+              <div className="text-sm font-medium">Summary:</div>
+              <button
+                onClick={handleCopySlackSummary}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
             </div>
-          )}
-        </section>
-      )}
+            <pre className="text-sm whitespace-pre-wrap">{slackSummary}</pre>
+          </div>
+        )}
+      </section>
 
       {/* Debug Drawer */}
       {debugInfo && (

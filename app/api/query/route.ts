@@ -37,9 +37,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { message } = requestSchema.parse(body);
 
-    // Track retrieved chunks
+    // Track retrieved chunks and tool calls
     const retrievedChunkIds: string[] = [];
     const sources: Array<{ id: string; filename: string; chunkIndex: number }> = [];
+    let toolCallsCount = 0;
 
     // Create streaming response using workflow agent
     const stream = new ReadableStream({
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
           for await (const event of workflowStream as unknown as AsyncIterable<any>) {
             // Track tool calls to capture retrieved chunks
             if (agentToolCallEvent.include(event) && event.data.toolName === 'searchRunbooks') {
+              toolCallsCount++;
               try {
                 const toolCall = event.data as any;
                 const toolResult = JSON.parse(toolCall.result || toolCall.output || '[]');
@@ -77,11 +79,14 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Send sources as final JSON event
+          // Send sources as final JSON event with debug info
           const sourcesEvent = {
             type: 'sources',
             request_id: requestId,
             sources: sources,
+            tool_calls_count: toolCallsCount,
+            retrieval_results_count: sources.length,
+            ...(toolCallsCount === 0 ? { note: 'agent_did_not_call_tool' } : {}),
           };
           controller.enqueue(encoder.encode(`\n\n<SOURCES>${JSON.stringify(sourcesEvent)}</SOURCES>`));
           

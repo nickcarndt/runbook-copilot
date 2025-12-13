@@ -5,55 +5,149 @@ import { z } from 'zod';
 import { query } from './db';
 import { createEmbedding } from './indexing';
 
-// Vector search in Postgres
-async function searchRunbooks(queryText: string, topK: number = 5): Promise<Array<{ id: string; text: string; filename: string; chunkIndex: number }>> {
-  // Create embedding for query
-  const queryEmbedding = await createEmbedding(queryText);
+// Extract keywords from query text
+function extractKeywords(queryText: string): string[] {
+  const tokens = queryText.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 4);
+  const unique = Array.from(new Set(tokens));
+  return unique.slice(0, 8);
+}
 
-  // Vector similarity search
-  const result = await query(
-    `SELECT 
-       c.id,
-       c.text,
-       c.chunk_index,
-       d.filename
-     FROM chunks c
-     JOIN documents d ON c.document_id = d.id
-     ORDER BY c.embedding <=> $1::vector
-     LIMIT $2`,
-    [JSON.stringify(queryEmbedding), topK]
-  );
+// Compute keyword score for a text
+function computeKeywordScore(text: string, keywords: string[]): number {
+  const lowerText = text.toLowerCase();
+  return keywords.filter(keyword => lowerText.includes(keyword)).length;
+}
 
-  // Dedupe results by id, then by filename+chunkIndex
-  const seenIds = new Set<string>();
-  const seenChunks = new Set<string>();
-  const deduped: Array<{ id: string; text: string; filename: string; chunkIndex: number }> = [];
+// Vector search in Postgres with hybrid reranking
+async function searchRunbooks(queryText: string, topK: number = 5): Promise<Array<{ id: string; text: string; filename: string; chunkIndex: number; distance?: number; keywordScore?: number }>> {
+  try {
+    // Create embedding for query
+    const queryEmbedding = await createEmbedding(queryText);
 
-  for (const row of result.rows) {
-    const chunkKey = `${row.filename}:${row.chunk_index}`;
-    
-    // Skip if we've seen this id or this filename+chunkIndex combination
-    if (seenIds.has(row.id) || seenChunks.has(chunkKey)) {
-      continue;
+    // Pull more candidates for reranking
+    const candidateK = Math.max(topK * 5, 25);
+
+    // Vector similarity search - get candidateK candidates
+    const result = await query(
+      `SELECT 
+         c.id,
+         c.text,
+         c.chunk_index,
+         d.filename,
+         (c.embedding <=> $1::vector) AS distance
+       FROM chunks c
+       JOIN documents d ON c.document_id = d.id
+       WHERE c.embedding IS NOT NULL
+       ORDER BY c.embedding <=> $1::vector
+       LIMIT $2`,
+      [JSON.stringify(queryEmbedding), candidateK]
+    );
+
+    // Extract keywords from query
+    const keywords = extractKeywords(queryText);
+
+    // Dedupe and compute keyword scores
+    const seenIds = new Set<string>();
+    const seenChunks = new Set<string>();
+    const candidates: Array<{ id: string; text: string; filename: string; chunkIndex: number; distance: number; keywordScore: number }> = [];
+
+    for (const row of result.rows) {
+      const chunkKey = `${row.filename}:${row.chunk_index}`;
+      
+      // Skip if we've seen this id or this filename+chunkIndex combination
+      if (seenIds.has(row.id) || seenChunks.has(chunkKey)) {
+        continue;
+      }
+
+      seenIds.add(row.id);
+      seenChunks.add(chunkKey);
+      
+      const keywordScore = computeKeywordScore(row.text, keywords);
+      candidates.push({
+        id: row.id,
+        text: row.text,
+        filename: row.filename,
+        chunkIndex: row.chunk_index,
+        distance: parseFloat(row.distance),
+        keywordScore,
+      });
     }
 
-    seenIds.add(row.id);
-    seenChunks.add(chunkKey);
-    deduped.push({
-      id: row.id,
-      text: row.text,
-      filename: row.filename,
-      chunkIndex: row.chunk_index,
+    // Rerank by keywordScore desc, then distance asc
+    candidates.sort((a, b) => {
+      if (b.keywordScore !== a.keywordScore) {
+        return b.keywordScore - a.keywordScore;
+      }
+      return a.distance - b.distance;
     });
-  }
 
-  return deduped;
+    // Return topK after rerank
+    return candidates.slice(0, topK);
+  } catch (error) {
+    // Log error and rethrow (don't silently return empty)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.log(JSON.stringify({
+      tool: 'searchRunbooks',
+      error: 'search_failed',
+      error_message: errorMessage,
+      query_preview: queryText.substring(0, 60),
+      topK
+    }));
+    throw error;
+  }
 }
 
 // Create searchRunbooks tool
 const searchRunbooksTool = tool(
-  async ({ query, topK = 5 }: { query: string; topK?: number }) => {
-    const results = await searchRunbooks(query, topK);
+  async (args: any) => {
+    // Log args structure for debugging
+    const argsType = typeof args;
+    const argsKeys = argsType === 'object' && args !== null ? Object.keys(args) : [];
+    
+    // Robust argument extraction with priority order
+    let q = '';
+    if (typeof args === 'string') {
+      q = args;
+    } else if (args) {
+      q = args.query 
+        ?? (typeof args.input === 'string' ? args.input : args.input?.query)
+        ?? args.text
+        ?? args.q
+        ?? args.args?.query
+        ?? args.parameters?.query
+        ?? '';
+    }
+    
+    const topK = args?.topK ?? args?.k ?? 5;
+    
+    // If query is empty, return empty array and log
+    if (!q.trim()) {
+      console.log(JSON.stringify({
+        tool: 'searchRunbooks',
+        args_type: argsType,
+        args_keys: argsKeys,
+        extracted_query_preview: '',
+        query_length: 0,
+        topK,
+        results_count: 0,
+        note: 'Empty query string'
+      }));
+      return JSON.stringify([], null, 2);
+    }
+    
+    const results = await searchRunbooks(q.trim(), topK);
+    
+    // Structured logging with full context
+    console.log(JSON.stringify({
+      tool: 'searchRunbooks',
+      args_type: argsType,
+      args_keys: argsKeys,
+      extracted_query_preview: q.trim().substring(0, 60),
+      query_length: q.trim().length,
+      topK,
+      results_count: results.length
+    }));
+    
     return JSON.stringify(results, null, 2);
   },
   {

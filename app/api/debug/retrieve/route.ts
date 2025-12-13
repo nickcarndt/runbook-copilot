@@ -40,11 +40,13 @@ export async function POST(request: NextRequest) {
     // Call searchRunbooks directly
     const results = await searchRunbooks(queryText, topK);
 
-    // Format results with text preview
+    // Format results with text preview, distance, and keyword score
     const formattedResults = results.map(result => ({
       id: result.id,
       filename: result.filename,
       chunkIndex: result.chunkIndex,
+      distance: result.distance,
+      keywordScore: result.keywordScore,
       textPreview: result.text.substring(0, 200) + (result.text.length > 200 ? '...' : ''),
     }));
 
