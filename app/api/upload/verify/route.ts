@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { checkRateLimit, getClientIP } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,21 @@ export async function POST(request: NextRequest) {
   const requestId = uuidv4();
 
   try {
+    // Rate limiting
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(clientIP, 10, 60 * 1000); // 10 requests per minute
+    if (!rateLimit.allowed) {
+      const latency = Date.now() - startTime;
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          valid: false,
+          latency_ms: latency,
+        },
+        { status: 200 }
+      );
+    }
+
     const uploadToken = process.env.UPLOAD_TOKEN;
     const headerToken = request.headers.get('x-upload-token');
 
@@ -16,29 +32,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           request_id: requestId,
-          ok: true,
+          valid: true,
           latency_ms: Date.now() - startTime,
         },
         { status: 200 }
       );
     }
 
-    if (!headerToken || headerToken !== uploadToken) {
-      const latency = Date.now() - startTime;
-      return NextResponse.json(
-        {
-          request_id: requestId,
-          error: { code: 'INVALID_UPLOAD_CODE', message: 'Invalid upload code' },
-          latency_ms: latency,
-        },
-        { status: 401 }
-      );
-    }
+    const isValid = headerToken === uploadToken;
 
     return NextResponse.json(
       {
         request_id: requestId,
-        ok: true,
+        valid: isValid,
         latency_ms: Date.now() - startTime,
       },
       { status: 200 }
@@ -50,10 +56,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         request_id: requestId,
+        valid: false,
         error: { message: errorMessage, code: 'INTERNAL_ERROR' },
         latency_ms: latency,
       },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }

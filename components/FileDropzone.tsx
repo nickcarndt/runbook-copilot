@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { put } from '@vercel/blob';
 
 interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
@@ -22,44 +21,35 @@ async function parseResponse(response: Response): Promise<any> {
   }
 }
 
-type UploadLockState = 'locked' | 'verifying' | 'unlocked';
+type UploadAuthState = 'locked' | 'checking' | 'unlocked' | 'invalid';
 
 export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>(''); // Upload status only
   const [demoStatus, setDemoStatus] = useState<string>(''); // Demo runbooks status
-  const [blobAvailable, setBlobAvailable] = useState<boolean | null>(null);
   const [uploadCode, setUploadCode] = useState<string>('');
   const [showUploadCode, setShowUploadCode] = useState(false);
-  const [uploadLockState, setUploadLockState] = useState<UploadLockState>(demoOnly ? 'locked' : 'unlocked');
+  const [uploadAuth, setUploadAuth] = useState<UploadAuthState>(demoOnly ? 'locked' : 'unlocked');
 
   // Load upload code and verified state from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('rbc_upload_token');
     const verified = localStorage.getItem('rbc_upload_verified') === 'true';
-    if (stored) {
+    if (stored && verified && demoOnly) {
       setUploadCode(stored);
-      // Only restore unlocked state if code exists and was previously verified
-      if (demoOnly && verified) {
-        setUploadLockState('unlocked');
-      }
+      setUploadAuth('unlocked');
     }
   }, [demoOnly]);
 
-  // Check if Blob is available (we'll detect this on first upload attempt)
-  useEffect(() => {
-    // We can't check env vars on client, so we'll detect on first use
-    setBlobAvailable(null);
-  }, []);
-
-  // Verify upload code
+  // Verify upload code (only called on explicit button click)
   const handleVerifyUploadCode = async () => {
     if (!uploadCode.trim()) {
+      setUploadAuth('invalid');
       setStatus('Error: Please enter an upload code');
       return;
     }
 
-    setUploadLockState('verifying');
+    setUploadAuth('checking');
     setStatus('Verifying upload code...');
 
     try {
@@ -73,27 +63,30 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
 
       const data = await parseResponse(response);
 
-      if (response.ok && data.ok) {
-        setUploadLockState('unlocked');
+      if (response.ok && data.valid === true) {
+        setUploadAuth('unlocked');
         setStatus('');
-        // Persist verified state
+        // Only persist token after successful verification
         localStorage.setItem('rbc_upload_token', uploadCode);
         localStorage.setItem('rbc_upload_verified', 'true');
       } else {
-        setUploadLockState('locked');
+        setUploadAuth('invalid');
         setStatus('Invalid code');
+        // Don't persist invalid tokens
+        localStorage.removeItem('rbc_upload_token');
         localStorage.removeItem('rbc_upload_verified');
       }
     } catch (error) {
-      setUploadLockState('locked');
+      setUploadAuth('invalid');
       const errorMessage = error instanceof Error ? error.message : 'Verification failed';
       setStatus(`Error: ${errorMessage}`);
+      localStorage.removeItem('rbc_upload_token');
       localStorage.removeItem('rbc_upload_verified');
     }
   };
 
   // Check if uploads are enabled
-  const uploadsEnabled = !demoOnly || uploadLockState === 'unlocked';
+  const uploadsEnabled = !demoOnly || uploadAuth === 'unlocked';
 
   // Clear upload status when uploads become locked (to avoid showing stale success messages)
   useEffect(() => {
@@ -165,45 +158,26 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
     }
 
     setUploading(true);
-    setStatus('Uploading to Blob...');
+    setStatus('Uploading and processing files...');
 
     try {
-      // Upload files to Vercel Blob
-      const blobUrls: string[] = [];
+      // Build FormData with files
+      const formData = new FormData();
       for (const file of validFiles) {
-        try {
-          const blob = await put(file.name, file, {
-            access: 'public',
-            contentType: file.type,
-          });
-          blobUrls.push(blob.url);
-        } catch (blobError: any) {
-          // Check for Blob token error
-          const errorMsg = blobError?.message || String(blobError);
-          if (errorMsg.includes('No token found') || errorMsg.includes('token') || errorMsg.includes('BLOB_READ_WRITE_TOKEN')) {
-            setBlobAvailable(false);
-            setStatus('Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.');
-            setUploading(false);
-            return;
-          }
-          throw blobError;
-        }
+        formData.append('files', file);
       }
 
-      setBlobAvailable(true);
-      setStatus('Processing files...');
-
       // Build headers - include upload token if present
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const headers: Record<string, string> = {};
       if (uploadCode) {
         headers['x-upload-token'] = uploadCode;
       }
 
-      // Send blob URLs to server for processing
+      // Upload files directly to server
       const response = await fetch('/api/upload', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ blobUrls }),
+        body: formData,
       });
 
       const data = await parseResponse(response);
@@ -218,10 +192,13 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED' || errorCode === 'INVALID_UPLOAD_CODE')) {
           // Relock on 401
           if (demoOnly) {
-            setUploadLockState('locked');
+            setUploadAuth('locked');
             localStorage.removeItem('rbc_upload_verified');
+            localStorage.removeItem('rbc_upload_token');
           }
           setStatus('Uploads are locked for the public demo. Ask Nick for an upload code.');
+        } else if (errorCode === 'BLOB_NOT_CONFIGURED') {
+          setStatus(`Error: ${data.error?.message || 'Blob storage not configured'} (Request ID: ${data.request_id})`);
         } else {
           const errorMsg = data.error?.message || data.error || 'Upload failed';
           setStatus(`Error: ${errorMsg} (${errorCode || 'UNKNOWN'})`);
@@ -230,10 +207,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
     } catch (error) {
       console.error('Upload error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      if (errorMessage.includes('No token found') || errorMessage.includes('token') || errorMessage.includes('BLOB_READ_WRITE_TOKEN')) {
-        setBlobAvailable(false);
-        setStatus('Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.');
-      } else if (errorMessage.includes('Non-JSON response')) {
+      if (errorMessage.includes('Non-JSON response')) {
         setStatus(`Error: ${errorMessage}`);
       } else {
         setStatus(`Error: ${errorMessage}`);
@@ -275,9 +249,9 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
               onChange={(e) => {
                 const newCode = e.target.value;
                 setUploadCode(newCode);
-                // Relock if code changes or is cleared
-                if (uploadLockState === 'unlocked' || !newCode.trim()) {
-                  setUploadLockState('locked');
+                // Reset to locked/invalid when code changes (don't verify on keystroke)
+                if (uploadAuth === 'unlocked' || uploadAuth === 'invalid') {
+                  setUploadAuth('locked');
                   localStorage.removeItem('rbc_upload_verified');
                   if (!newCode.trim()) {
                     localStorage.removeItem('rbc_upload_token');
@@ -285,7 +259,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
                 }
               }}
                 placeholder="Enter upload code"
-                disabled={uploadLockState === 'verifying'}
+                disabled={uploadAuth === 'checking'}
                 className="w-full border rounded px-3 py-2 text-sm pr-20 disabled:bg-gray-100"
               />
               <button
@@ -298,18 +272,28 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
             </div>
             <button
               onClick={handleVerifyUploadCode}
-              disabled={!uploadCode.trim() || uploadLockState === 'verifying' || uploadLockState === 'unlocked'}
+              disabled={!uploadCode.trim() || uploadAuth === 'checking' || uploadAuth === 'unlocked'}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 text-sm whitespace-nowrap"
             >
-              {uploadLockState === 'verifying' ? 'Verifying...' : uploadLockState === 'unlocked' ? 'Unlocked' : 'Unlock uploads'}
+              {uploadAuth === 'checking' ? 'Verifying...' : uploadAuth === 'unlocked' ? 'Unlocked' : 'Unlock uploads'}
             </button>
           </div>
-          {uploadLockState === 'unlocked' && (
+          {uploadAuth === 'unlocked' && (
             <p className="mt-2 text-sm text-green-600">
               ✓ Uploads unlocked
             </p>
           )}
-          {uploadLockState === 'locked' && uploadCode && (
+          {uploadAuth === 'invalid' && (
+            <p className="mt-2 text-sm text-red-600">
+              Invalid code. Please check and try again.
+            </p>
+          )}
+          {uploadAuth === 'locked' && uploadCode && (
+            <p className="mt-2 text-sm text-gray-600">
+              Optional — needed only to upload your own runbooks.
+            </p>
+          )}
+          {uploadAuth === 'locked' && !uploadCode && (
             <p className="mt-2 text-sm text-gray-600">
               Optional — needed only to upload your own runbooks.
             </p>
@@ -322,7 +306,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         onDrop={uploadsEnabled ? handleDrop : (e) => e.preventDefault()}
         onDragOver={(e) => e.preventDefault()}
         className={`border-2 border-dashed rounded-lg p-8 text-center ${
-          !uploadsEnabled || blobAvailable === false
+          !uploadsEnabled
             ? 'border-gray-200 bg-gray-50 opacity-60'
             : 'border-gray-300'
         }`}
@@ -331,16 +315,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
           type="file"
           accept=".pdf,.md,.markdown"
           onChange={handleFileSelect}
-          disabled={uploading || !uploadsEnabled || blobAvailable === false}
+          disabled={uploading || !uploadsEnabled}
           multiple
           className="hidden"
           id="file-input"
         />
-        {blobAvailable === false ? (
-          <div className="text-sm text-gray-600">
-            Blob uploads require Vercel Blob to be configured; use demo runbooks for local testing.
-          </div>
-        ) : !uploadsEnabled ? (
+        {!uploadsEnabled ? (
           <div className="text-sm text-gray-600">
             Uploads are locked for the public demo. Ask Nick for an upload code.
           </div>

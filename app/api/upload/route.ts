@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { z } from 'zod';
 import { logUpload } from '@/lib/db';
 import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
-
-const requestSchema = z.object({
-  blobUrls: z.array(z.string().url()).min(1).max(10), // Max 10 files
-});
+import { put } from '@vercel/blob';
 
 // Upload token gate
 function checkUploadToken(request: NextRequest): boolean {
@@ -93,57 +89,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse request body with error handling
-    let body: any;
+    // Parse FormData
+    let formData: FormData;
     try {
-      body = await request.json();
+      formData = await request.formData();
     } catch (parseError) {
       const latency = Date.now() - startTime;
       try {
-        await logUpload(requestId, latency, 'error', 'Invalid JSON in request body');
+        await logUpload(requestId, latency, 'error', 'Invalid form data');
       } catch (logError) {
         // Ignore logging errors
       }
       return NextResponse.json(
         {
           request_id: requestId,
-          error: { message: 'Invalid JSON in request body', code: 'PARSE_ERROR' },
+          error: { message: 'Invalid form data', code: 'PARSE_ERROR' },
           latency_ms: latency,
         },
         { status: 400 }
       );
     }
 
-    // Validate request body
-    let blobUrls: string[];
-    try {
-      const validated = requestSchema.parse(body);
-      blobUrls = validated.blobUrls;
-    } catch (validationError) {
-      const latency = Date.now() - startTime;
-      const errorMessage = validationError instanceof z.ZodError 
-        ? 'Invalid request body: ' + validationError.errors.map(e => e.message).join(', ')
-        : 'Invalid request body';
-      try {
-        await logUpload(requestId, latency, 'error', errorMessage);
-      } catch (logError) {
-        // Ignore logging errors
+    // Extract files from FormData
+    const files: File[] = [];
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        files.push(value);
       }
-      return NextResponse.json(
-        {
-          request_id: requestId,
-          error: { message: errorMessage, code: 'VALIDATION_ERROR' },
-          latency_ms: latency,
-        },
-        { status: 400 }
-      );
     }
 
     // Enforce max file count
-    if (blobUrls.length > MAX_FILE_COUNT) {
+    if (files.length === 0) {
       const latency = Date.now() - startTime;
       try {
-        await logUpload(requestId, latency, 'error', `Exceeds max file count: ${blobUrls.length} > ${MAX_FILE_COUNT}`);
+        await logUpload(requestId, latency, 'error', 'No files provided');
+      } catch (logError) {
+        // Ignore logging errors
+      }
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          error: { message: 'No files provided', code: 'VALIDATION_ERROR' },
+          latency_ms: latency,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (files.length > MAX_FILE_COUNT) {
+      const latency = Date.now() - startTime;
+      try {
+        await logUpload(requestId, latency, 'error', `Exceeds max file count: ${files.length} > ${MAX_FILE_COUNT}`);
       } catch (logError) {
         // Ignore logging errors
       }
@@ -157,19 +153,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Download and process files
+    // Process files
     let totalSize = 0;
     const processedFiles: Array<{ filename: string; chunks: number }> = [];
 
-    for (const blobUrl of blobUrls) {
+    for (const file of files) {
       try {
-        // Download file from blob
-        const fileResponse = await fetch(blobUrl);
-        if (!fileResponse.ok) {
-          throw new Error(`Failed to download file from ${blobUrl}: ${fileResponse.status} ${fileResponse.statusText}`);
+        // Validate file type
+        const filename = file.name;
+        const isMarkdown = filename.endsWith('.md') || filename.endsWith('.MD') || filename.endsWith('.markdown');
+        const isPDF = filename.endsWith('.pdf') || filename.endsWith('.PDF');
+        
+        if (!isMarkdown && !isPDF) {
+          throw new Error(`Unsupported file type: ${filename}`);
         }
 
-        const buffer = Buffer.from(await fileResponse.arrayBuffer());
+        // Read file into buffer
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
         totalSize += buffer.length;
 
         // Check total size limit
@@ -190,18 +191,20 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Extract filename from blob URL or use default
-        const urlParts = blobUrl.split('/');
-        const filename = urlParts[urlParts.length - 1] || `file-${Date.now()}`;
-
-        // Determine file type and extract text
-        const isMarkdown = filename.endsWith('.md') || filename.endsWith('.MD') || filename.endsWith('.markdown');
-        const isPDF = filename.endsWith('.pdf') || filename.endsWith('.PDF');
-        
-        if (!isMarkdown && !isPDF) {
-          throw new Error(`Unsupported file type: ${filename}`);
+        // Optionally store to Blob if token exists (but don't require it)
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+          try {
+            await put(filename, buffer, {
+              access: 'public',
+              contentType: file.type || (isPDF ? 'application/pdf' : 'text/markdown'),
+            });
+          } catch (blobError) {
+            // Log but don't fail - Blob storage is optional
+            console.warn('Failed to store file to Blob:', blobError);
+          }
         }
 
+        // Extract text
         let text: string;
         if (isPDF) {
           text = await extractTextFromPDF(buffer);
@@ -227,7 +230,7 @@ export async function POST(request: NextRequest) {
         processedFiles.push({ filename, chunks: chunkCount });
       } catch (fileError) {
         // If processing a file fails, throw to outer catch
-        throw new Error(`Error processing file ${blobUrl}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+        throw new Error(`Error processing file ${file.name}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
       }
     }
 
@@ -258,10 +261,7 @@ export async function POST(request: NextRequest) {
     let errorMessage = 'Unknown error';
     let errorCode = 'INTERNAL_ERROR';
 
-    if (error instanceof z.ZodError) {
-      errorMessage = 'Invalid request body: ' + error.errors.map(e => e.message).join(', ');
-      errorCode = 'VALIDATION_ERROR';
-    } else if (error instanceof Error) {
+    if (error instanceof Error) {
       errorMessage = error.message;
       errorCode = error.name || 'INTERNAL_ERROR';
     } else {
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
         error: { message: errorMessage, code: errorCode },
         latency_ms: latency,
       },
-      { status: error instanceof z.ZodError ? 400 : 500 }
+      { status: 500 }
     );
   }
 }
