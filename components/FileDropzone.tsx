@@ -6,6 +6,7 @@ interface FileDropzoneProps {
   onDemoRunbooksLoad?: () => void;
   demoOnly?: boolean; // When true, shows upload UI in locked state (for public demos)
   onUploadSuccess?: (data: { filenames: string[]; chunks: number; requestId: string }) => void;
+  onUploadStart?: () => void;
 }
 
 // Helper to safely parse response
@@ -32,7 +33,7 @@ interface UploadSuccessData {
   topRetrievalPreview?: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }>;
 }
 
-export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onUploadSuccess }: FileDropzoneProps) {
+export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onUploadSuccess, onUploadStart }: FileDropzoneProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string>(''); // Upload status only
   const [demoStatus, setDemoStatus] = useState<string>(''); // Demo runbooks status

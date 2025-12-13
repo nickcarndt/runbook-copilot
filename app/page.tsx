@@ -102,7 +102,7 @@ export default function Home() {
     const filename = data.filenames[0] || 'runbook';
     const baseName = filename.replace(/\.(pdf|md|markdown)$/i, '').replace(/[_-]/g, ' ');
     
-    // Generate 2-3 contextual questions
+    // Generate 2-3 contextual questions based on filename
     const questions = [
       `How do I troubleshoot ${baseName}?`,
       `What are the steps for ${baseName}?`,
@@ -110,6 +110,11 @@ export default function Home() {
     ].slice(0, 3);
     
     setSuggestedQuestions(questions);
+  };
+
+  const handleUploadStart = () => {
+    // Clear suggested questions when new upload starts
+    setSuggestedQuestions([]);
   };
 
   return (
@@ -126,7 +131,7 @@ export default function Home() {
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Upload</h2>
         {/* Render FileDropzone once - publicDemo prop will update but component won't remount */}
-        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} />
+        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} onUploadStart={handleUploadStart} />
       </section>
 
       {/* Chat Section */}
