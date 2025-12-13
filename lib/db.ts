@@ -1,5 +1,4 @@
 import { Pool } from 'pg';
-import './serverWarnings'; // Initialize warning handler once (suppresses DEP0169 from pg)
 
 // Single connection pool for serverless
 const pool = new Pool({

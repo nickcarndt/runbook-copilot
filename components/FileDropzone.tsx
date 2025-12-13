@@ -210,6 +210,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       }
 
       // Build headers - include upload token if present
+      // IMPORTANT: do NOT set Content-Type manually (browser sets it with boundary)
       const headers: Record<string, string> = {};
       if (uploadCode) {
         headers['x-upload-token'] = uploadCode;
@@ -222,64 +223,68 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         body: formData,
       });
 
-      // Parse response safely - handle empty body and non-JSON
-      let data: any;
-      try {
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const text = await response.text();
-          data = text ? JSON.parse(text) : {};
-        } else {
-          const text = await response.text();
-          throw new Error(`Non-JSON response: ${response.status} ${response.statusText} ${text.substring(0, 200)}`);
-        }
-      } catch (parseError) {
-        const errorMsg = parseError instanceof Error ? parseError.message : 'Failed to parse response';
-        setStatus(`Error: ${errorMsg} (Status: ${response.status})`);
-        return;
-      }
+      // Read response body as text first, then parse JSON
+      const raw = await response.text();
+      let data: any = null;
+      let parseSucceeded = false;
       
-      if (response.ok) {
-        // Build success message with inserted filenames
-        let successMsg = `Success! Indexed ${data.inserted_filenames?.length || data.files_processed || 0} file(s): ${(data.inserted_filenames || []).join(', ')}. `;
-        successMsg += `${data.total_chunks || 0} chunks created.`;
-        
-        // Add verification status
-        if (data.verified_searchable === true && data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
-          const firstResult = data.top_retrieval_preview[0];
-          successMsg += ` Verified searchable: "${firstResult.textPreview}" (from ${firstResult.filename})`;
-        } else if (data.verified_searchable === false) {
-          successMsg += ` (Search verification pending - content may not be immediately searchable)`;
-        }
-        
-        successMsg += ` Request ID: ${data.request_id || 'unknown'}`;
-        setStatus(successMsg);
-      } else {
-        // Handle error response
-        const errorCode = data?.error?.code || '';
-        const errorMessage = data?.error?.message || data?.error || 'Upload failed';
+      try {
+        data = raw ? JSON.parse(raw) : {};
+        parseSucceeded = true;
+      } catch (parseError) {
+        parseSucceeded = false;
+        console.error('Failed to parse response as JSON:', parseError, 'Raw response:', raw.substring(0, 200));
+      }
+
+      // Log response details for debugging
+      console.log('Upload response:', {
+        status: response.status,
+        ok: response.ok,
+        parseSucceeded,
+        requestId: data?.request_id || 'unknown',
+      });
+
+      if (!response.ok) {
+        // Show real server message
+        const errorMessage = data?.error?.message || data?.error || raw || `Upload failed: ${response.status}`;
         const requestId = data?.request_id || 'unknown';
         
-        if (response.status === 401 && (errorCode === 'UNAUTHORIZED' || errorCode === 'UPLOAD_LOCKED' || errorCode === 'INVALID_UPLOAD_CODE')) {
-          // Relock on 401
+        // Handle 401 by relocking
+        if (response.status === 401) {
           if (demoOnly) {
             setUploadAuth('locked');
             localStorage.removeItem('rbc_upload_verified');
             localStorage.removeItem('rbc_upload_token');
+            setUploadCode('');
           }
           setStatus(`Uploads are locked. Request ID: ${requestId}`);
-        } else if (errorCode === 'BLOB_NOT_CONFIGURED') {
-          setStatus(`Error: ${errorMessage} (Request ID: ${requestId})`);
         } else {
-          setStatus(`Error: ${errorMessage} (${errorCode || 'UNKNOWN'}, Request ID: ${requestId})`);
+          setStatus(`Error: ${errorMessage} (Request ID: ${requestId})`);
         }
+        return;
       }
+
+      // Success - build message with inserted filenames
+      const requestId = data?.request_id || 'unknown';
+      let successMsg = `Success! Indexed ${data.inserted_filenames?.length || data.files_processed || 0} file(s): ${(data.inserted_filenames || []).join(', ')}. `;
+      successMsg += `${data.total_chunks || 0} chunks created.`;
+      
+      // Add verification status
+      if (data.verified_searchable === true && data.top_retrieval_preview && data.top_retrieval_preview.length > 0) {
+        const firstResult = data.top_retrieval_preview[0];
+        successMsg += ` Verified searchable: "${firstResult.textPreview}" (from ${firstResult.filename})`;
+      } else if (data.verified_searchable === false) {
+        successMsg += ` (Search verification pending - content may not be immediately searchable)`;
+      }
+      
+      successMsg += ` Request ID: ${requestId}`;
+      setStatus(successMsg);
     } catch (error) {
       console.error('Upload error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       setStatus(`Error: ${errorMessage}`);
     } finally {
-      // Always clear uploading state
+      // Always clear uploading state - this is critical
       setUploading(false);
     }
   };
