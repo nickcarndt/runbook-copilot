@@ -130,17 +130,12 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
   const hasToken = !!uploadCode?.trim();
   const uploadsEnabled = !demoOnly || (uploadAuth === 'unlocked' && hasToken);
 
-  // Clear upload status when uploads become locked (to avoid showing stale success messages)
-  useEffect(() => {
-    if (!uploadsEnabled && status && !status.includes('locked') && !status.includes('Invalid')) {
-      setStatus('');
-    }
-  }, [uploadsEnabled, status]);
+  // Don't clear status automatically - only clear when new upload starts
 
   const handleUseDemoRunbooks = async () => {
     setUploading(true);
     setDemoStatus('Loading demo runbooks...');
-    setStatus(''); // Clear upload status
+    // Don't clear upload status - keep it visible
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -215,6 +210,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
     }
 
     console.log('[FileDropzone] Setting uploading=true, status="Uploading..."');
+    // Clear previous status only when starting a new upload
+    setStatus('');
     setUploading(true);
     setStatus('Uploading and processing files...');
 
@@ -453,13 +450,29 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
             {uploading ? 'Processing...' : 'Upload my own runbooks'}
           </label>
         )}
-        {/* Only show status if it's from an upload attempt (not from demo runbooks) */}
-        {status && (status.includes('Processed') || status.includes('Upload') || status.includes('Error') || status.includes('locked')) && (
-          <div className={`mt-2 text-sm ${status.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
+      </div>
+
+      {/* Status message - always shown unconditionally */}
+      <div className="mt-4">
+        {uploading ? (
+          <div className="text-sm text-gray-600">Uploading and processing files...</div>
+        ) : status ? (
+          <div className={`text-sm p-3 rounded border ${
+            status.startsWith('Error') 
+              ? 'text-red-600 bg-red-50 border-red-200' 
+              : status.startsWith('Success')
+              ? 'text-green-600 bg-green-50 border-green-200'
+              : 'text-gray-600 bg-gray-50 border-gray-200'
+          }`}>
             {status}
           </div>
-        )}
+        ) : null}
       </div>
+
+      {/* Temporary debug line */}
+      <pre className="text-[10px] opacity-60 mt-2">
+        uploading={String(uploading)} auth={uploadAuth} hasStatus={String(!!status)} statusLength={status.length}
+      </pre>
     </div>
   );
 }
