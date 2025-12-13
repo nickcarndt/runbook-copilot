@@ -551,6 +551,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               <button
                 onClick={() => setShowDetails(!showDetails)}
                 className="ml-2 text-xs text-green-700 hover:text-green-900 underline focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
+                type="button"
               >
                 {showDetails ? 'Hide' : 'Show'} details
               </button>
@@ -582,13 +583,13 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       setTimeout(() => setCopiedDetails(false), 1200);
                     }}
                     className="text-green-700 hover:text-green-900 underline text-xs focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 rounded px-1"
+                    type="button"
                   >
                     {copiedDetails ? 'Copied!' : 'Copy details'}
                   </button>
                 </div>
                 {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
                   <div>
-                    <div className="font-medium mb-2">Retrieval preview:</div>
                     <div className="space-y-2">
                       {/* Show first preview always */}
                       <div className="bg-white p-2.5 rounded border border-green-200">
@@ -599,7 +600,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         {/* Show relevance for first preview only when advanced is enabled AND show more is expanded */}
                         {showMorePreviews && showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
                           <div className="text-gray-500 text-xs mt-1.5">
-                            Relevance: {(1 - uploadSuccessData.topRetrievalPreview[0].distance).toFixed(2)}
+                            Similarity: {(1 / (1 + uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
                           </div>
                         )}
                       </div>
@@ -623,7 +624,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           <div className="text-gray-700 mt-1 leading-relaxed">{result.textPreview}</div>
                           {showAdvanced && result.distance !== undefined && (
                             <div className="text-gray-500 text-xs mt-1.5">
-                              Relevance: {(1 - result.distance).toFixed(2)}
+                              Similarity: {(1 / (1 + result.distance)).toFixed(2)} (higher is better)
                             </div>
                           )}
                         </div>
