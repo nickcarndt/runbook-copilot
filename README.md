@@ -1,6 +1,10 @@
 # Runbook Copilot
 
-AI-powered runbook assistant that helps you find and apply incident response procedures from your documentation.
+Agentic RAG runbook copilot: upload runbooks → ask questions → get step-by-step answers with sources → draft Slack updates.
+
+**Run it in 30s**: Upload PDF/Markdown runbooks, ask "How do I mitigate high memory usage?", get cited answers, and draft incident updates.
+
+> 📸 *Screenshot placeholder: Add a GIF or screenshot showing the upload → question → answer flow*
 
 ## Features
 
@@ -9,12 +13,32 @@ AI-powered runbook assistant that helps you find and apply incident response pro
 - **Draft Slack updates** → generate concise incident updates from the same context
 - **Public demo mode** → rate-limited, upload-gated for safe public demos
 
+## Architecture
+
+```mermaid
+flowchart LR
+UI[Next.js UI] -->|upload| UP[/api/upload/]
+UI -->|question| Q[/api/query/]
+UI -->|slack| S[/api/slackSummary/]
+UP --> DB[(Postgres + pgvector)]
+Q --> DB
+Q --> LLM[OpenAI]
+S --> LLM
+```
+
 ## Setup
 
-### 1) Database (Neon Postgres + pgvector)
+### 1) Database (Postgres + pgvector)
 
-1. Create a Neon Postgres database.
-2. Apply `lib/schema.sql` (idempotent). It enables:
+Use any Postgres database with pgvector support (e.g., [Neon](https://neon.tech), Vercel Postgres, Supabase).
+
+1. Create a Postgres database with pgvector extension.
+2. Apply the schema:
+   ```bash
+   psql "$DATABASE_URL" -f lib/schema.sql
+   ```
+   
+   The schema enables:
    - `vector` extension (for embeddings)
    - `pgcrypto` extension (for `gen_random_uuid()`)
 
@@ -23,16 +47,18 @@ AI-powered runbook assistant that helps you find and apply incident response pro
 Create `.env.local` (or set in Vercel):
 
 **Required:**
-- `DATABASE_URL` = Neon connection string
+- `DATABASE_URL` = Postgres connection string (e.g., from Neon, Vercel Postgres, Supabase)
 - `OPENAI_API_KEY` = OpenAI API key
 
 **Demo / safety:**
-- `PUBLIC_DEMO` = `true` (recommended for public demos)
-- `UPLOAD_TOKEN` = random token used to unlock uploads (only for `/api/upload`)
+- `PUBLIC_DEMO` = `true` (recommended for public demos; gates uploads and shows warning banner)
+- `UPLOAD_TOKEN` = random token (e.g., `openssl rand -hex 16`) used to unlock uploads via header `x-upload-token`
 
 **Optional:**
-- `BLOB_READ_WRITE_TOKEN` = enables saving uploaded files to Vercel Blob (indexing works even without it)
-- `NEXT_PUBLIC_DEBUG_UPLOADS` = `true` (enables verbose console logging for debugging; default: false)
+- `BLOB_READ_WRITE_TOKEN` = Vercel Blob token for optional file storage (uploads work via multipart/form-data even without it)
+- `OPENAI_MODEL` = `gpt-4o-mini` (default if not set)
+- `OPENAI_EMBEDDING_MODEL` = `text-embedding-3-small` (default if not set)
+- `NEXT_PUBLIC_DEBUG_UPLOADS` = `true` (enables verbose console logging; default: false)
 
 ### 3) Local Dev
 
@@ -62,7 +88,16 @@ npm run dev
 - Upload UI is locked until a valid upload code is verified via `/api/upload/verify`
 - Upload code can be entered in the UI and verified server-side
 
-### 6) Quick Demo Script
+### 6) Security / Demo Warning
+
+**⚠️ Do not upload sensitive data.** This is a demo application with rate limiting but no authentication system.
+
+- `PUBLIC_DEMO=true` gates uploads behind `UPLOAD_TOKEN` and shows a warning banner
+- Rate limiting applies to all public endpoints (`/api/query`, `/api/slackSummary`, `/api/seedDemo`)
+- "Reset demo" button clears local storage state (upload tokens, verification flags)
+- Upload code verification is server-side only; tokens are never exposed to the client
+
+### 7) Quick Demo Script
 
 1. **Load demo runbooks**: Click "Use demo runbooks" (or call `POST /api/seedDemo`)
 2. **Ask a question**: Type a question like "How do I mitigate high memory usage?" in the chat
