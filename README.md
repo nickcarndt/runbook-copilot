@@ -1,5 +1,10 @@
 # Runbook Copilot
 
+![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=flat-square&logo=vercel)
+![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
+
 Agentic RAG runbook copilot: upload runbooks → ask questions → get step-by-step answers with sources → draft Slack updates.
 
 **Run it in 30s**: Upload PDF/Markdown runbooks, ask "How do I mitigate high memory usage?", get cited answers, and draft incident updates.
