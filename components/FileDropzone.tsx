@@ -58,7 +58,6 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
   const [uploadSuccessData, setUploadSuccessData] = useState<UploadSuccessData | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showMorePreviews, setShowMorePreviews] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedDetails, setCopiedDetails] = useState(false);
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
   const tooltipTriggerRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -140,7 +139,6 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       setUploadSuccessData(null);
       setShowDetails(false);
       setShowMorePreviews(false);
-      setShowAdvanced(false);
       setCopiedDetails(false);
       setShowTooltip(null);
       setUploadCode('');
@@ -354,7 +352,6 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
     setUploadSuccessData(null);
     setShowDetails(false);
     setShowMorePreviews(false);
-    setShowAdvanced(false);
     setCopiedDetails(false);
     setShowTooltip(null);
     setUploading(true);
@@ -648,7 +645,6 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                   if (showDetails) {
                     // Reset nested state when collapsing
                     setShowMorePreviews(false);
-                    setShowAdvanced(false);
                     setShowTooltip(null);
                   }
                   setShowDetails(!showDetails);
@@ -682,8 +678,8 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         'Retrieval preview:',
                         ...previews.map((r, i) => {
                           let previewText = `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`;
-                          // Include similarity metrics if scoring is enabled (matches what's visible on screen)
-                          if (showAdvanced && r.distance !== undefined) {
+                          // Always include similarity metrics (matches what's visible on screen)
+                          if (r.distance !== undefined) {
                             const similarity = Math.max(0, Math.min(1, 1 - r.distance));
                             previewText += `\nSimilarity (cosine): ${similarity.toFixed(2)} (higher is better)`;
                             previewText += `\nCosine distance: ${r.distance.toFixed(4)} (lower is better)`;
@@ -711,9 +707,9 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           {uploadSuccessData.topRetrievalPreview[0].filename} (chunk {uploadSuccessData.topRetrievalPreview[0].chunkIndex})
                         </div>
                         <div className="text-gray-700 mt-1 leading-relaxed">{uploadSuccessData.topRetrievalPreview[0].textPreview}</div>
-                        {/* Show similarity metrics when scoring is enabled (on all visible cards) */}
+                        {/* Always show similarity metrics (on all visible cards) */}
                         {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
-                        {showAdvanced && uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
+                        {uploadSuccessData.topRetrievalPreview[0].distance !== undefined && (
                           <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
                             <div className="flex items-center gap-1">
                               <span>
@@ -782,8 +778,9 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                             {result.filename} (chunk {result.chunkIndex})
                           </div>
                           <div className="text-gray-700 mt-1 leading-relaxed">{result.textPreview}</div>
+                          {/* Always show similarity metrics (on all visible cards) */}
                           {/* Cosine distance (<=>) ranges 0-2, so similarity = clamp(1 - distance, 0, 1) */}
-                          {showAdvanced && result.distance !== undefined && (
+                          {result.distance !== undefined && (
                             <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
                               <div className="flex items-center gap-1">
                                 <span>
@@ -829,19 +826,6 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           )}
                         </div>
                       ))}
-                      
-                      {/* Scoring toggle (show when details are open and there's at least 1 preview) */}
-                      {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length >= 1 && (
-                        <button
-                          onClick={() => setShowAdvanced(!showAdvanced)}
-                          className="text-xs px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:ring-offset-1 transition-colors"
-                          type="button"
-                          aria-expanded={showAdvanced}
-                          aria-label={showAdvanced ? 'Hide scoring metrics' : 'Show scoring metrics'}
-                        >
-                          {showAdvanced ? 'Hide' : 'Show'} scoring
-                        </button>
-                      )}
                     </div>
                   </div>
                 )}
