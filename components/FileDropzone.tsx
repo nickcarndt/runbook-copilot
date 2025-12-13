@@ -173,18 +173,30 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    if (!uploadsEnabled) return;
+    console.log('[FileDropzone] handleDrop called, uploadsEnabled:', uploadsEnabled);
+    if (!uploadsEnabled) {
+      console.log('[FileDropzone] Uploads disabled, returning early');
+      return;
+    }
     const files = Array.from(e.dataTransfer.files) as File[];
+    console.log('[FileDropzone] Dropped files:', files.length);
     await uploadFiles(files);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!uploadsEnabled) return;
+    console.log('[FileDropzone] handleFileSelect called, uploadsEnabled:', uploadsEnabled);
+    if (!uploadsEnabled) {
+      console.log('[FileDropzone] Uploads disabled, returning early');
+      return;
+    }
     const files = Array.from(e.target.files || []) as File[];
+    console.log('[FileDropzone] Selected files:', files.length);
     await uploadFiles(files);
   };
 
   const uploadFiles = async (files: File[]) => {
+    console.log('[FileDropzone] uploadFiles called with', files.length, 'files');
+    
     // Filter to PDF/MD only
     const validFiles = files.filter(
       file => 
@@ -194,11 +206,15 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         file.name.endsWith('.markdown')
     );
 
+    console.log('[FileDropzone] validFiles:', validFiles.length, validFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
+
     if (validFiles.length === 0) {
+      console.log('[FileDropzone] No valid files, returning early');
       setStatus('Error: Only PDF and Markdown files are supported');
       return;
     }
 
+    console.log('[FileDropzone] Setting uploading=true, status="Uploading..."');
     setUploading(true);
     setStatus('Uploading and processing files...');
 
@@ -207,6 +223,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       const formData = new FormData();
       for (const file of validFiles) {
         formData.append('files', file);
+        console.log('[FileDropzone] Added file to FormData:', file.name, file.size, 'bytes');
       }
 
       // Build headers - include upload token if present
@@ -214,8 +231,14 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
       const headers: Record<string, string> = {};
       if (uploadCode) {
         headers['x-upload-token'] = uploadCode;
+        console.log('[FileDropzone] Including upload token in headers');
+      } else {
+        console.log('[FileDropzone] No upload token - uploads may be locked');
       }
 
+      console.log('[FileDropzone] Starting fetch to /api/upload...');
+      const fetchStartTime = Date.now();
+      
       // Upload files directly to server
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -223,25 +246,41 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false }: F
         body: formData,
       });
 
+      const fetchDuration = Date.now() - fetchStartTime;
+      console.log('[FileDropzone] Fetch completed:', {
+        status: response.status,
+        ok: response.ok,
+        duration: fetchDuration + 'ms',
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+
       // Read response body as text first, then parse JSON
+      console.log('[FileDropzone] Reading response body...');
       const raw = await response.text();
+      console.log('[FileDropzone] Response body length:', raw.length, 'chars');
+      console.log('[FileDropzone] Response body preview:', raw.substring(0, 200));
+      
       let data: any = null;
       let parseSucceeded = false;
       
       try {
         data = raw ? JSON.parse(raw) : {};
         parseSucceeded = true;
+        console.log('[FileDropzone] JSON parse succeeded:', Object.keys(data));
       } catch (parseError) {
         parseSucceeded = false;
-        console.error('Failed to parse response as JSON:', parseError, 'Raw response:', raw.substring(0, 200));
+        console.error('[FileDropzone] Failed to parse response as JSON:', parseError, 'Raw response:', raw.substring(0, 200));
       }
 
       // Log response details for debugging
-      console.log('Upload response:', {
+      console.log('[FileDropzone] Upload response summary:', {
         status: response.status,
         ok: response.ok,
         parseSucceeded,
         requestId: data?.request_id || 'unknown',
+        hasError: !!data?.error,
+        errorCode: data?.error?.code,
+        errorMessage: data?.error?.message,
       });
 
       if (!response.ok) {
