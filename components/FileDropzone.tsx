@@ -465,7 +465,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
               {uploadAuth === 'checking' ? 'Verifying...' : uploadAuth === 'unlocked' ? 'Verified' : 'Unlock uploads'}
             </button>
           </div>
-          {/* Only show "Uploads unlocked" if verified in this session (unlocked state set by successful verify) */}
+          {/* Only show "Uploads unlocked" if BOTH token exists AND verified AND auth is unlocked */}
           {uploadAuth === 'unlocked' && hasToken && (
             <p className="mt-2 text-sm text-green-600">
               ✓ Uploads unlocked
@@ -621,12 +621,14 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                       
                       {/* Advanced toggle (only show when "Show more" is expanded) */}
                       {showMorePreviews && uploadSuccessData.topRetrievalPreview.length > 1 && (
-                        <button
-                          onClick={() => setShowAdvanced(!showAdvanced)}
-                          className="text-gray-600 hover:text-gray-800 underline text-xs"
-                        >
-                          {showAdvanced ? 'Hide' : 'Show'} advanced
-                        </button>
+                        <div>
+                          <button
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                            className="text-gray-600 hover:text-gray-800 underline text-xs"
+                          >
+                            {showAdvanced ? 'Hide' : 'Show'} advanced
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>

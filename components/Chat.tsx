@@ -14,7 +14,7 @@ interface ChatProps {
   suggestedQuestions?: string[];
 }
 
-export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuestions = [] }: ChatProps) {
+export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuestions = [], onQuestionSubmit }: ChatProps) {
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,6 +23,11 @@ export default function Chat({ onSourcesUpdate, onAnswerComplete, suggestedQuest
 
   const submitQuestion = async (question: string) => {
     if (!question.trim() || loading) return;
+
+    // Notify parent to clear suggested questions when user submits
+    if (onQuestionSubmit) {
+      onQuestionSubmit();
+    }
 
     const userMessage = { role: 'user' as const, content: question };
     setMessages(prev => [...prev, userMessage]);

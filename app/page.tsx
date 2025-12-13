@@ -156,6 +156,7 @@ export default function Home() {
           onSourcesUpdate={handleSourcesUpdate}
           onAnswerComplete={handleAnswerComplete}
           suggestedQuestions={suggestedQuestions}
+          onQuestionSubmit={() => setSuggestedQuestions([])}
         />
       </section>
 

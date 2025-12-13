@@ -49,11 +49,25 @@ npm run dev
 
 ### 5) Public Demo Mode Behavior (`PUBLIC_DEMO=true`)
 
-- `/api/query` and `/api/slackSummary` are public and rate-limited.
-- `/api/seedDemo` is public and rate-limited.
-- `/api/upload` requires `UPLOAD_TOKEN` (header: `x-upload-token`).
-- UI shows a "Public demo — do not upload sensitive data." banner.
-- Upload UI is locked until a valid upload code is verified.
+**Public endpoints (rate-limited):**
+- `/api/query` - Ask questions about your runbooks
+- `/api/slackSummary` - Generate Slack incident updates
+- `/api/seedDemo` - Load demo runbooks (idempotent)
+
+**Gated endpoint:**
+- `/api/upload` - Requires `UPLOAD_TOKEN` (header: `x-upload-token`)
+
+**UI behavior:**
+- Shows a "Public demo — do not upload sensitive data." banner
+- Upload UI is locked until a valid upload code is verified via `/api/upload/verify`
+- Upload code can be entered in the UI and verified server-side
+
+### 6) Quick Demo Script
+
+1. **Load demo runbooks**: Click "Use demo runbooks" (or call `POST /api/seedDemo`)
+2. **Ask a question**: Type a question like "How do I mitigate high memory usage?" in the chat
+3. **Draft Slack update**: After getting an answer, click "Draft Slack Update" to generate an incident update
+4. **Optional - Upload your own**: If you have an upload code, enter it to unlock uploads and upload your own PDF/Markdown runbooks
 
 ## Troubleshooting
 
