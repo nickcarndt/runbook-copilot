@@ -380,7 +380,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
       if (onUploadSuccess) {
         onUploadSuccess({ filenames, chunks, requestId });
       }
-      console.log('[FileDropzone] Status set, about to exit try block');
+      debugLog('[FileDropzone] Status set, about to exit try block');
     } catch (error) {
       if (DEBUG_UPLOADS) {
         console.error('[FileDropzone] Upload error caught:', error);
