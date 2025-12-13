@@ -588,7 +588,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           // Include similarity metric if advanced mode is enabled and distance is available
                           if (showMorePreviews && showAdvanced && r.distance !== undefined) {
                             const similarity = Math.max(0, Math.min(1, 1 - r.distance));
-                            previewText += `\nSimilarity: ${similarity.toFixed(2)} (derived from cosine distance ${r.distance.toFixed(4)})`;
+                            previewText += `\nSimilarity (cosine): ${similarity.toFixed(2)} (derived from cosine distance ${r.distance.toFixed(4)})`;
                           }
                           return previewText;
                         }),
@@ -619,7 +619,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                           <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
                             <div className="flex items-center gap-1 relative">
                               <span>
-                                Similarity: {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
+                                Similarity (cosine): {Math.max(0, Math.min(1, 1 - uploadSuccessData.topRetrievalPreview[0].distance)).toFixed(2)} (higher is better)
                               </span>
                               <button
                                 type="button"
@@ -677,7 +677,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                             <div className="text-gray-500 text-xs mt-1.5 space-y-0.5">
                               <div className="flex items-center gap-1 relative">
                                 <span>
-                                  Similarity: {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
+                                  Similarity (cosine): {Math.max(0, Math.min(1, 1 - result.distance)).toFixed(2)} (higher is better)
                                 </span>
                                 <button
                                   type="button"
