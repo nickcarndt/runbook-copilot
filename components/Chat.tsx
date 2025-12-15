@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useImperativeHandle, forwardRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -39,6 +39,15 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
     }
   }));
 
+  const linkifySources = useCallback((text: string) => {
+    // Convert `[Source: foo.pdf]` -> `[Source: foo.pdf](#sources)`.
+    // Avoid double-linking if it's already followed by `(#sources)`.
+    return text.replace(/\[Source:\s*([^\]]+)\](?!\(#sources\))/g, (_m, filename) => {
+      const clean = String(filename).trim();
+      return `[Source: ${clean}](#sources)`;
+    });
+  }, []);
+
   const submitQuestion = async (question: string) => {
     if (!question.trim() || loading) return;
 
@@ -73,13 +82,13 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
           errorMessage = errorData.error?.message || errorData.error || errorMessage;
           errorCode = errorData.error?.code || errorCode;
           if (onSourcesUpdate) {
-            onSourcesUpdate([], requestId || '', Date.now() - startTime, { message: errorMessage, code: errorCode });
+            onSourcesUpdate([], requestId || '', Date.now() - submitStartTime, { message: errorMessage, code: errorCode });
           }
         } catch (e) {
           // If JSON parsing fails, use status text
           errorMessage = `${response.status} ${response.statusText}`;
           if (onSourcesUpdate) {
-            onSourcesUpdate([], requestId || '', Date.now() - startTime, { message: errorMessage, code: String(response.status) });
+            onSourcesUpdate([], requestId || '', Date.now() - submitStartTime, { message: errorMessage, code: String(response.status) });
           }
         }
         setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMessage}` }]);
@@ -117,6 +126,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
           }
         } else {
           assistantMessage += chunk;
+          assistantMessage = linkifySources(assistantMessage);
         }
 
         setMessages(prev => {
@@ -139,6 +149,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
             if (sourcesData.sources && Array.isArray(sourcesData.sources)) {
               sources = sourcesData.sources;
               assistantMessage = assistantMessage.replace(/<SOURCES>.*?<\/SOURCES>/s, '').trim();
+              assistantMessage = linkifySources(assistantMessage);
               setMessages(prev => {
                 const newMessages = [...prev];
                 if (newMessages[newMessages.length - 1]?.role === 'assistant') {
@@ -153,12 +164,14 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
         }
       }
 
-      const latency = Date.now() - startTime;
+      const latency = Date.now() - submitStartTime;
       
       // Notify parent of sources and debug info
       if (onSourcesUpdate && sources.length > 0) {
         onSourcesUpdate(sources, requestId, latency);
       }
+
+      assistantMessage = linkifySources(assistantMessage);
 
       // Notify parent of completed answer
       if (onAnswerComplete) {
@@ -191,45 +204,33 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      // Convert [Source: filename] to clickable links
-                      p: ({ children }) => {
-                        const text = String(React.Children.toArray(children).join(''));
-                        // Match [Source: filename] or [Source: filename.ext]
-                        const sourcePattern = /\[Source:\s*([^\]]+)\]/g;
-                        const matches = Array.from(text.matchAll(sourcePattern));
-                        if (matches.length > 0) {
-                          const parts: React.ReactNode[] = [];
-                          let lastIndex = 0;
-                          matches.forEach((match, idx) => {
-                            // Add text before match
-                            if (match.index !== undefined && match.index > lastIndex) {
-                              parts.push(text.substring(lastIndex, match.index));
-                            }
-                            // Add clickable link
-                            parts.push(
-                              <a
-                                key={`source-${idx}`}
-                                href="#sources"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  document.getElementById('sources')?.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                className="text-blue-600 hover:text-blue-800 underline"
-                              >
-                                {match[0]}
-                              </a>
-                            );
-                            if (match.index !== undefined) {
-                              lastIndex = match.index + match[0].length;
-                            }
-                          });
-                          // Add remaining text
-                          if (lastIndex < text.length) {
-                            parts.push(text.substring(lastIndex));
-                          }
-                          return <p>{parts}</p>;
+                      a: ({ href, children, ...props }: any) => {
+                        if (href === '#sources') {
+                          return (
+                            <a
+                              href={href}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                document.getElementById('sources')?.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                              className="text-blue-600 hover:text-blue-800 underline"
+                              {...props}
+                            >
+                              {children}
+                            </a>
+                          );
                         }
-                        return <p>{children}</p>;
+                        return (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:text-blue-800 underline"
+                            {...props}
+                          >
+                            {children}
+                          </a>
+                        );
                       },
                       // Style inline code
                       code: ({ inline, className, children, ...props }: any) => {
