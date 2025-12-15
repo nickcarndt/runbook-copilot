@@ -176,7 +176,7 @@ export default function Home() {
 
       {/* Sources */}
       {sources.length > 0 && (
-        <section className="mb-8">
+        <section id="sources" className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Sources</h2>
           <div className="space-y-2">
             {sources.map((source, i) => (

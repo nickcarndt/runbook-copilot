@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useImperativeHandle, forwardRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Source {
   id: string;
@@ -183,8 +185,79 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
       <div className="h-64 overflow-y-auto mb-4 space-y-2">
         {messages.map((msg, i) => (
           <div key={i} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
-            <div className={`inline-block p-2 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'} ${msg.role === 'assistant' ? 'whitespace-pre-wrap' : ''}`}>
-              {msg.content}
+            <div className={`inline-block p-2 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+              {msg.role === 'assistant' ? (
+                <div className="prose prose-sm max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      // Convert [Source: filename] to clickable links
+                      p: ({ children }) => {
+                        const text = String(React.Children.toArray(children).join(''));
+                        // Match [Source: filename] or [Source: filename.ext]
+                        const sourcePattern = /\[Source:\s*([^\]]+)\]/g;
+                        const matches = Array.from(text.matchAll(sourcePattern));
+                        if (matches.length > 0) {
+                          const parts: React.ReactNode[] = [];
+                          let lastIndex = 0;
+                          matches.forEach((match, idx) => {
+                            // Add text before match
+                            if (match.index !== undefined && match.index > lastIndex) {
+                              parts.push(text.substring(lastIndex, match.index));
+                            }
+                            // Add clickable link
+                            parts.push(
+                              <a
+                                key={`source-${idx}`}
+                                href="#sources"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  document.getElementById('sources')?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="text-blue-600 hover:text-blue-800 underline"
+                              >
+                                {match[0]}
+                              </a>
+                            );
+                            if (match.index !== undefined) {
+                              lastIndex = match.index + match[0].length;
+                            }
+                          });
+                          // Add remaining text
+                          if (lastIndex < text.length) {
+                            parts.push(text.substring(lastIndex));
+                          }
+                          return <p>{parts}</p>;
+                        }
+                        return <p>{children}</p>;
+                      },
+                      // Style inline code
+                      code: ({ inline, className, children, ...props }: any) => {
+                        if (inline) {
+                          return (
+                            <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>
+                              {children}
+                            </code>
+                          );
+                        }
+                        return (
+                          <code className="block bg-gray-100 p-2 rounded text-sm font-mono overflow-x-auto" {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                      // Style code blocks
+                      pre: ({ children }: any) => {
+                        return <pre className="bg-gray-100 p-2 rounded text-sm font-mono overflow-x-auto my-2">{children}</pre>;
+                      },
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              )}
             </div>
           </div>
         ))}
