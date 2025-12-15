@@ -71,6 +71,7 @@ Create `.env.local` (or set in Vercel):
 - `BLOB_READ_WRITE_TOKEN` = Vercel Blob token for optional file storage (uploads work via multipart/form-data even without it)
 - `OPENAI_MODEL` = `gpt-4o-mini` (default if not set)
 - `OPENAI_EMBEDDING_MODEL` = `text-embedding-3-small` (default if not set)
+- `ENABLE_VERIFY_SEARCH` = `true` (enables upload preview scoring cards; default: false, skipped in production for speed)
 - `NEXT_PUBLIC_DEBUG_UPLOADS` = `true` (enables verbose console logging; default: false)
 
 ### 3) Local Dev
