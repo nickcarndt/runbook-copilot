@@ -113,6 +113,17 @@ export default function Home() {
     setSuggestedQuestions(questions);
   };
 
+  const handleDemoRunbooksLoad = () => {
+    // Show same suggested questions after demo runbooks are loaded
+    const questions = [
+      "What's the fastest safe triage for this incident?",
+      "What are the first 5 commands to run?",
+      "Draft a Slack update for this incident",
+    ];
+    
+    setSuggestedQuestions(questions);
+  };
+
   const handleUploadStart = () => {
     // Clear suggested questions when new upload starts
     setSuggestedQuestions([]);
@@ -158,7 +169,7 @@ export default function Home() {
           )}
         </div>
         {/* Render FileDropzone once - publicDemo prop will update but component won't remount */}
-        <FileDropzone onDemoRunbooksLoad={() => {}} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} onUploadStart={handleUploadStart} resetKey={resetKey} />
+        <FileDropzone onDemoRunbooksLoad={handleDemoRunbooksLoad} demoOnly={publicDemo} onUploadSuccess={handleUploadSuccess} onUploadStart={handleUploadStart} resetKey={resetKey} />
       </section>
 
       {/* Chat Section */}
