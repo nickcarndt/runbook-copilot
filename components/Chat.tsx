@@ -55,11 +55,29 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
   const normalizeCitations = useCallback((text: string) => {
     // Convert plain text citations like "Source: somefile.pdf." or "Source: somefile.md" 
     // into markdown links: "Source: [somefile.pdf](#sources)"
-    // Strip trailing punctuation from filename
-    return text.replace(/Source:\s*([^\s]+\.(pdf|md|PDF|MD))[.,;:!?]*/g, (_m, filename) => {
+    // Idempotent: only convert if not already a markdown link
+    // Skip if already contains ](#sources) or Source: [filename](#sources)
+    let normalized = text.replace(/Source:\s*([^\s]+\.(pdf|md|PDF|MD))[.,;:!?]*/g, (match, filename) => {
+      // Check if this is already a markdown link by looking ahead
+      const matchIndex = text.indexOf(match);
+      const afterMatch = text.substring(matchIndex + match.length);
+      // If already has markdown link structure (starts with [ or (#sources)), skip
+      if (afterMatch.trim().startsWith('[') || afterMatch.trim().startsWith('(#sources)')) {
+        return match;
+      }
+      // Check if already in format Source: [filename](#sources) by looking before
+      const beforeMatch = text.substring(Math.max(0, matchIndex - 50), matchIndex);
+      if (beforeMatch.includes('Source: [') && afterMatch.includes('](#sources)')) {
+        return match;
+      }
       const clean = filename.replace(/[.,;:!?]+$/, '');
       return `Source: [${clean}](#sources)`;
     });
+    
+    // Defensive cleanup: collapse repeated ](#sources) sequences
+    normalized = normalized.replace(/(\]\(#sources\))+/g, '](#sources)');
+    
+    return normalized;
   }, []);
 
   const submitQuestion = async (question: string) => {
@@ -141,9 +159,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
             }
           }
         } else {
+          // Store raw streamed text during streaming (no normalization yet)
           assistantMessage += chunk;
-          assistantMessage = linkifySources(assistantMessage);
-          assistantMessage = normalizeCitations(assistantMessage);
           if (!hasReceivedFirstToken && assistantMessage.trim().length > 0) {
             setHasReceivedFirstToken(true);
           }
@@ -152,6 +169,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
         setMessages(prev => {
           const newMessages = [...prev];
           if (newMessages[newMessages.length - 1]?.role === 'assistant') {
+            // Display raw text during streaming
             newMessages[newMessages.length - 1].content = assistantMessage;
           } else {
             newMessages.push({ role: 'assistant', content: assistantMessage });
@@ -169,6 +187,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
             if (sourcesData.sources && Array.isArray(sourcesData.sources)) {
               sources = sourcesData.sources;
               assistantMessage = assistantMessage.replace(/<SOURCES>.*?<\/SOURCES>/s, '').trim();
+              // Normalize citations once after stream completes
               assistantMessage = linkifySources(assistantMessage);
               assistantMessage = normalizeCitations(assistantMessage);
               setMessages(prev => {
