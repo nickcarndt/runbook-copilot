@@ -52,6 +52,16 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
     });
   }, []);
 
+  const normalizeCitations = useCallback((text: string) => {
+    // Convert plain text citations like "Source: somefile.pdf." or "Source: somefile.md" 
+    // into markdown links: "Source: [somefile.pdf](#sources)"
+    // Strip trailing punctuation from filename
+    return text.replace(/Source:\s*([^\s]+\.(pdf|md|PDF|MD))[.,;:!?]*/g, (_m, filename) => {
+      const clean = filename.replace(/[.,;:!?]+$/, '');
+      return `Source: [${clean}](#sources)`;
+    });
+  }, []);
+
   const submitQuestion = async (question: string) => {
     if (!question.trim() || loading) return;
 
@@ -133,6 +143,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
         } else {
           assistantMessage += chunk;
           assistantMessage = linkifySources(assistantMessage);
+          assistantMessage = normalizeCitations(assistantMessage);
           if (!hasReceivedFirstToken && assistantMessage.trim().length > 0) {
             setHasReceivedFirstToken(true);
           }
@@ -159,6 +170,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
               sources = sourcesData.sources;
               assistantMessage = assistantMessage.replace(/<SOURCES>.*?<\/SOURCES>/s, '').trim();
               assistantMessage = linkifySources(assistantMessage);
+              assistantMessage = normalizeCitations(assistantMessage);
               setMessages(prev => {
                 const newMessages = [...prev];
                 if (newMessages[newMessages.length - 1]?.role === 'assistant') {
@@ -181,6 +193,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
       }
 
       assistantMessage = linkifySources(assistantMessage);
+      assistantMessage = normalizeCitations(assistantMessage);
 
       // Notify parent of completed answer
       if (onAnswerComplete) {

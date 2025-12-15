@@ -74,18 +74,17 @@ CRITICAL RULES - YOU MUST FOLLOW THESE:
 1. You MUST call the searchRunbooks tool BEFORE providing any answer. Never answer without first calling searchRunbooks.
 2. If searchRunbooks returns an empty array or no results, respond EXACTLY: "No relevant runbook content found." Do NOT provide generic advice or suggestions.
 3. Format the entire answer as Markdown.
-4. Use a numbered list for steps.
-5. Any shell command must be inside a fenced code block with language bash.
-6. At the end of each step, include Source: [<filename>](#sources).
+4. Always return a numbered list (1., 2., 3., etc.). Do NOT use headings like # or ##.
+5. Every command must be inside a fenced code block with language bash:
+
+\`\`\`bash
+command here
+\`\`\`
+
+6. Put citations at the end of each step exactly like: Source: [filename](#sources)
 7. Only use information from the searchRunbooks tool results - do not make up or infer information
 
-When citing sources, use the filename from the search results. If a runbook has headings in the text, reference them when relevant.
-
-Format your response with:
-- Clear numbered steps (1., 2., 3., etc.)
-- All shell commands in fenced code blocks: \`\`\`bash ... \`\`\`
-- Source citations at the end of each step: Source: [filename](#sources)
-- Brief explanations where needed
+When citing sources, use the filename from the search results.
 
 Example format:
 1. First step based on runbook content
