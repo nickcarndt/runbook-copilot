@@ -35,12 +35,32 @@ export async function logUpload(
   requestId: string,
   latencyMs: number,
   status: string,
-  errorMessage?: string
+  errorMessage?: string,
+  stageTimings?: Record<string, { ms: number; counts?: Record<string, number> }>
 ) {
+  const stageTimingsJson = stageTimings ? JSON.stringify(stageTimings) : null;
   await query(
-    `INSERT INTO upload_logs (request_id, latency_ms, status, error_message)
-     VALUES ($1, $2, $3, $4)`,
-    [requestId, latencyMs, status, errorMessage || null]
+    `INSERT INTO upload_logs (request_id, latency_ms, status, error_message, stage_timings)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     ON CONFLICT DO NOTHING`,
+    [requestId, latencyMs, status, errorMessage || null, stageTimingsJson]
+  );
+}
+
+// Helper for updating upload log (for status updates)
+export async function updateUploadLog(
+  requestId: string,
+  latencyMs: number,
+  status: string,
+  errorMessage?: string,
+  stageTimings?: Record<string, { ms: number; counts?: Record<string, number> }>
+) {
+  const stageTimingsJson = stageTimings ? JSON.stringify(stageTimings) : null;
+  await query(
+    `UPDATE upload_logs 
+     SET latency_ms = $2, status = $3, error_message = $4, stage_timings = $5::jsonb
+     WHERE request_id = $1`,
+    [requestId, latencyMs, status, errorMessage || null, stageTimingsJson]
   );
 }
 

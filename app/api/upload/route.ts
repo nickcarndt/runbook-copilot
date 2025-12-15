@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { Buffer } from 'buffer';
-import { logUpload } from '@/lib/db';
-import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
+import { logUpload, updateUploadLog } from '@/lib/db';
+import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbeddingsBatch, insertDocument, deleteChunksForDocument, insertChunksBulk, checkUniqueConstraint } from '@/lib/indexing';
 import { searchRunbooks } from '@/lib/retrieval';
 import { put } from '@vercel/blob';
 
@@ -11,73 +11,75 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`Timeout: ${label} after ${ms}ms`)), ms)
+      setTimeout(() => reject(new Error(`timeout at stage=${label} after ${ms}ms`)), ms)
     ),
   ]);
 }
 
-// Build a deterministic verification query from extracted text
-// Tries to extract: first heading (H1/H2), or first rare phrase, or first 6-10 unique tokens
-function buildVerificationQuery(text: string): string {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  
-  // Try to find first heading (H1/H2)
-  for (const line of lines.slice(0, 20)) {
-    if (/^#{1,2}\s+/.test(line)) {
-      // Extract heading text (remove # and trim)
-      const headingText = line.replace(/^#+\s+/, '').trim();
-      if (headingText.length >= 10 && headingText.length <= 100) {
-        return headingText;
-      }
-    }
-  }
-  
-  // Try to find a unique phrase (3-5 words that appear early)
-  for (const line of lines.slice(0, 10)) {
-    const words = line.split(/\s+/).filter(w => w.length >= 4);
-    if (words.length >= 3) {
-      // Take first 3-5 words as a phrase
-      const phrase = words.slice(0, Math.min(5, words.length)).join(' ');
-      if (phrase.length >= 10 && phrase.length <= 80) {
-        return phrase;
-      }
-    }
-  }
-  
-  // Fallback: extract rare-ish tokens (longer words, unique)
-  const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 5);
-  const uniqueTokens = Array.from(new Set(tokens));
-  if (uniqueTokens.length >= 3) {
-    return uniqueTokens.slice(0, Math.min(8, uniqueTokens.length)).join(' ');
-  }
-  
-  // Last resort: first 50 chars
-  return text.substring(0, 50).trim();
+// Logging helper with request_id
+function log(requestId: string, message: string, data?: Record<string, any>) {
+  const logData = { request_id: requestId, ...data };
+  console.log(`[upload] ${message}`, JSON.stringify(logData));
 }
+
+// Limits (tuned for 60-120s completion target)
+const MAX_FILE_COUNT = 3;
+const MAX_TOTAL_SIZE_MB = 10; // Reduced from 15MB for faster processing
+const MAX_TOTAL_SIZE_BYTES = MAX_TOTAL_SIZE_MB * 1024 * 1024;
+const MAX_EXTRACTED_CHARS_PER_FILE = 150000; // 150k chars (reduced from 200k)
+const MAX_CHUNKS_PER_UPLOAD = 60; // Reduced from 80 for faster completion
+const EMBEDDING_BATCH_SIZE = 100; // OpenAI supports up to 2048 inputs per request
+const EMBEDDING_CONCURRENCY = 2; // Reduced from 3 for more predictable timing
+
+// Stage timeout limits (ms)
+const TIMEOUT_PARSE_FORM = 10000;
+const TIMEOUT_READ_FILE = 30000;
+const TIMEOUT_EXTRACT_TEXT = 60000; // PDF extraction can be slow
+const TIMEOUT_CHUNK = 10000;
+const TIMEOUT_EMBED = 120000; // 2min for batch embeddings
+const TIMEOUT_DB_INSERT = 30000;
+const TIMEOUT_VERIFY_SEARCH = 15000;
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+// maxDuration: 300s (5min) is max for Pro plan with Fluid Compute enabled
+// Typical uploads should complete in 60-120s with tuned caps
+export const maxDuration = 300;
+
+// Cache UNIQUE constraint check result per function instance (cold start)
+let cachedHasConstraint: boolean | null = null;
+let constraintCheckPromise: Promise<boolean> | null = null;
 
 // Upload token gate
 function checkUploadToken(request: NextRequest): boolean {
   const uploadToken = process.env.UPLOAD_TOKEN;
-  if (!uploadToken) return false; // Require token if set
+  if (!uploadToken) return false;
   const headerToken = request.headers.get('x-upload-token');
   return headerToken === uploadToken;
 }
 
-// Limits
-const MAX_FILE_COUNT = 10;
-const MAX_TOTAL_SIZE_MB = 100;
-const MAX_TOTAL_SIZE_BYTES = MAX_TOTAL_SIZE_MB * 1024 * 1024;
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const requestId = uuidv4();
+  const stageTimings: Record<string, { ms: number; counts?: Record<string, number> }> = {};
+
+  // Log start
+  log(requestId, 'upload started');
+
+  // Write initial upload_logs row with status='started'
+  try {
+    await logUpload(requestId, 0, 'started', null, {});
+  } catch (logError) {
+    // Log error but continue
+    console.error(`[upload] failed to write initial log: ${logError}`);
+  }
 
   // Early validation of required environment variables
   if (!process.env.OPENAI_API_KEY) {
     const latency = Date.now() - startTime;
+    try {
+      await updateUploadLog(requestId, latency, 'error', 'OPENAI_API_KEY not set', stageTimings);
+    } catch {}
     return NextResponse.json(
       {
         request_id: requestId,
@@ -90,6 +92,9 @@ export async function POST(request: NextRequest) {
 
   if (!process.env.DATABASE_URL) {
     const latency = Date.now() - startTime;
+    try {
+      await updateUploadLog(requestId, latency, 'error', 'DATABASE_URL not set', stageTimings);
+    } catch {}
     return NextResponse.json(
       {
         request_id: requestId,
@@ -105,10 +110,8 @@ export async function POST(request: NextRequest) {
     if (!checkUploadToken(request)) {
       const latency = Date.now() - startTime;
       try {
-        await logUpload(requestId, latency, 'error', 'Unauthorized');
-      } catch (logError) {
-        // Ignore logging errors
-      }
+        await updateUploadLog(requestId, latency, 'error', 'Unauthorized', stageTimings);
+      } catch {}
       return NextResponse.json(
         {
           request_id: requestId,
@@ -119,15 +122,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if UNIQUE constraint exists
-    const hasConstraint = await checkUniqueConstraint();
-    if (!hasConstraint) {
+    // Check if UNIQUE constraint exists (cached per function instance)
+    if (cachedHasConstraint === null) {
+      if (!constraintCheckPromise) {
+        constraintCheckPromise = checkUniqueConstraint();
+      }
+      cachedHasConstraint = await constraintCheckPromise;
+      constraintCheckPromise = null; // Clear promise after use
+    }
+    
+    if (!cachedHasConstraint) {
       const latency = Date.now() - startTime;
       try {
-        await logUpload(requestId, latency, 'error', 'Missing UNIQUE constraint on documents.filename');
-      } catch (logError) {
-        // Ignore logging errors
-      }
+        await updateUploadLog(requestId, latency, 'error', 'Missing UNIQUE constraint on documents.filename', stageTimings);
+      } catch {}
       return NextResponse.json(
         {
           request_id: requestId,
@@ -141,38 +149,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse FormData
+    // Stage: parse_form
+    const parseFormStart = Date.now();
     let formData: FormData;
     try {
-      formData = await request.formData();
+      formData = await withTimeout(
+        request.formData(),
+        TIMEOUT_PARSE_FORM,
+        'parse_form'
+      );
+      const parseFormMs = Date.now() - parseFormStart;
+      stageTimings.parse_form = { ms: parseFormMs };
+      log(requestId, 'parse_form completed', { stage: 'parse_form', ms: parseFormMs });
     } catch (parseError) {
+      const parseFormMs = Date.now() - parseFormStart;
+      stageTimings.parse_form = { ms: parseFormMs };
       const latency = Date.now() - startTime;
+      const errorMsg = parseError instanceof Error ? parseError.message : 'Invalid form data';
       try {
-        await logUpload(requestId, latency, 'error', 'Invalid form data');
-      } catch (logError) {
-        // Ignore logging errors
-      }
+        await updateUploadLog(requestId, latency, 'error', errorMsg, stageTimings);
+      } catch {}
+      log(requestId, 'parse_form failed', { stage: 'parse_form', ms: parseFormMs, error: errorMsg });
       return NextResponse.json(
         {
           request_id: requestId,
-          error: { message: 'Invalid form data', code: 'PARSE_ERROR' },
+          error: { message: errorMsg, code: 'PARSE_ERROR' },
           latency_ms: latency,
         },
         { status: 400 }
       );
     }
 
-    // Extract files from FormData (explicit field name 'files')
+    // Extract files from FormData
     const files = formData.getAll('files') as File[];
 
     // Enforce max file count
     if (files.length === 0) {
       const latency = Date.now() - startTime;
       try {
-        await logUpload(requestId, latency, 'error', 'No files provided');
-      } catch (logError) {
-        // Ignore logging errors
-      }
+        await updateUploadLog(requestId, latency, 'error', 'No files provided', stageTimings);
+      } catch {}
       return NextResponse.json(
         {
           request_id: requestId,
@@ -186,10 +202,8 @@ export async function POST(request: NextRequest) {
     if (files.length > MAX_FILE_COUNT) {
       const latency = Date.now() - startTime;
       try {
-        await logUpload(requestId, latency, 'error', `Exceeds max file count: ${files.length} > ${MAX_FILE_COUNT}`);
-      } catch (logError) {
-        // Ignore logging errors
-      }
+        await updateUploadLog(requestId, latency, 'error', `Exceeds max file count: ${files.length} > ${MAX_FILE_COUNT}`, stageTimings);
+      } catch {}
       return NextResponse.json(
         {
           request_id: requestId,
@@ -202,12 +216,12 @@ export async function POST(request: NextRequest) {
 
     // Process files
     let totalSize = 0;
-    const processedFiles: Array<{ filename: string; chunks: number }> = [];
-    const fileTexts: Map<string, string> = new Map(); // Store extracted text for verification query
+    const processedFiles: Array<{ filename: string; chunks: number; chunks_skipped?: number }> = [];
+    const fileTexts: Map<string, string> = new Map();
+    let totalChunksCreated = 0;
 
     for (const file of files) {
       try {
-        // Validate file type
         const filename = file.name;
         const isMarkdown = filename.endsWith('.md') || filename.endsWith('.MD') || filename.endsWith('.markdown');
         const isPDF = filename.endsWith('.pdf') || filename.endsWith('.PDF');
@@ -216,17 +230,32 @@ export async function POST(request: NextRequest) {
           throw new Error(`Unsupported file type: ${filename}`);
         }
 
-        // Read file into buffer with validation (must use arrayBuffer() with parentheses)
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        
-        // Validate buffer is not empty
-        if (!buffer || buffer.length === 0) {
-          throw new Error(`Empty PDF buffer (file=${file.name}, size=${file.size}, buffer_len=${buffer?.length || 'undefined'}, buffer_type=${typeof buffer}, buffer_constructor=${buffer?.constructor?.name || 'undefined'})`);
+        // Stage: read_file_or_download_blob
+        const readFileStart = Date.now();
+        let buffer: Buffer;
+        try {
+          const arrayBuffer = await withTimeout(
+            file.arrayBuffer(),
+            TIMEOUT_READ_FILE,
+            'read_file_or_download_blob'
+          );
+          buffer = Buffer.from(arrayBuffer);
+          const readFileMs = Date.now() - readFileStart;
+          if (!stageTimings.read_file_or_download_blob) {
+            stageTimings.read_file_or_download_blob = { ms: 0, counts: { files: 0 } };
+          }
+          stageTimings.read_file_or_download_blob.ms += readFileMs;
+          stageTimings.read_file_or_download_blob.counts!.files = (stageTimings.read_file_or_download_blob.counts!.files || 0) + 1;
+          log(requestId, 'read_file completed', { stage: 'read_file_or_download_blob', ms: readFileMs, filename });
+        } catch (readError) {
+          const readFileMs = Date.now() - readFileStart;
+          const errorMsg = readError instanceof Error ? readError.message : 'Failed to read file';
+          throw new Error(`Failed to read file ${filename}: ${errorMsg}`);
         }
         
-        // Debug log with type information
-        console.log(`Processing file: ${filename}, type: ${file.type}, size: ${file.size}, buffer.length: ${buffer.length}, buffer_type: ${typeof buffer}, buffer_constructor: ${buffer.constructor.name}`);
+        if (!buffer || buffer.length === 0) {
+          throw new Error(`Empty buffer for ${filename}`);
+        }
         
         totalSize += buffer.length;
 
@@ -234,10 +263,8 @@ export async function POST(request: NextRequest) {
         if (totalSize > MAX_TOTAL_SIZE_BYTES) {
           const latency = Date.now() - startTime;
           try {
-            await logUpload(requestId, latency, 'error', `Total size exceeds limit: ${(totalSize / 1024 / 1024).toFixed(2)}MB > ${MAX_TOTAL_SIZE_MB}MB`);
-          } catch (logError) {
-            // Ignore logging errors
-          }
+            await updateUploadLog(requestId, latency, 'error', `Total size exceeds limit: ${(totalSize / 1024 / 1024).toFixed(2)}MB > ${MAX_TOTAL_SIZE_MB}MB`, stageTimings);
+          } catch {}
           return NextResponse.json(
             {
               request_id: requestId,
@@ -248,128 +275,214 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Optionally store to Blob if token exists (but don't require it)
+        // Optionally store to Blob if token exists (with timeout to prevent stalling)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
           try {
-            // Convert Buffer to ArrayBuffer for @vercel/blob put()
-            const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-            await put(filename, arrayBuffer, {
-              access: 'public',
-              contentType: file.type || (isPDF ? 'application/pdf' : 'text/markdown'),
-            });
+            const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+            // Use unique key to avoid collisions/overwrites
+            const blobKey = `${requestId}/${filename}`;
+            await withTimeout(
+              put(blobKey, arrayBuffer, {
+                access: 'public',
+                contentType: file.type || (isPDF ? 'application/pdf' : 'text/markdown'),
+              }),
+              8000,
+              'blob_put'
+            );
           } catch (blobError) {
-            // Log but don't fail - Blob storage is optional
-            console.warn('Failed to store file to Blob:', blobError);
+            log(requestId, 'blob storage failed (non-fatal)', { filename, error: blobError instanceof Error ? blobError.message : String(blobError) });
           }
         }
 
-        // Extract text (ensure buffer is passed correctly)
+        // Stage: extract_text
+        const extractStart = Date.now();
         let text: string;
-        if (isPDF) {
-          // Hard guard: validate buffer before parsing
-          if (!buffer || !buffer.length) {
-            throw new Error(`Empty PDF buffer: ${filename} size=${file.size} type=${file.type} buffer_len=${buffer?.length || 'undefined'}`);
+        try {
+          if (isPDF) {
+            const pdfHeader = buffer.slice(0, 4).toString();
+            if (pdfHeader !== '%PDF') {
+              throw new Error(`Not a PDF header: ${filename}`);
+            }
+            
+            const bufferForPdf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+            text = await withTimeout(
+              extractTextFromPDF(bufferForPdf),
+              TIMEOUT_EXTRACT_TEXT,
+              'extract_text'
+            );
+          } else {
+            text = extractTextFromMarkdown(buffer);
           }
           
-          // Hard guard: validate PDF header
-          const pdfHeader = buffer.slice(0, 4).toString();
-          if (pdfHeader !== '%PDF') {
-            throw new Error(`Not a PDF header: ${filename} (header: ${pdfHeader}, size=${file.size}, buffer_len=${buffer.length})`);
+          // Enforce max extracted characters per file
+          if (text.length > MAX_EXTRACTED_CHARS_PER_FILE) {
+            const originalLength = text.length;
+            text = text.substring(0, MAX_EXTRACTED_CHARS_PER_FILE);
+            log(requestId, 'text truncated', { filename, original_length: originalLength, truncated_to: MAX_EXTRACTED_CHARS_PER_FILE });
           }
           
-          // Log before calling extractTextFromPDF
-          console.log(`[upload] About to call extractTextFromPDF: filename=${filename}, buffer.length=${buffer.length}, buffer_type=${typeof buffer}, buffer_constructor=${buffer.constructor.name}, header="${pdfHeader}"`);
-          
-          // Call extractTextFromPDF with validated buffer (ensure it's a Buffer)
-          const bufferForPdf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-          text = await extractTextFromPDF(bufferForPdf);
-          
-          if (!text || text.trim().length === 0) {
-            throw new Error(`PDF extraction returned empty text: ${filename} (size=${file.size}, buffer_len=${buffer.length})`);
+          const extractMs = Date.now() - extractStart;
+          if (!stageTimings.extract_text) {
+            stageTimings.extract_text = { ms: 0, counts: { files: 0, chars: 0 } };
           }
-          console.log(`[upload] pdf extracted: filename=${filename}, chars=${text.length}`);
-        } else {
-          text = extractTextFromMarkdown(buffer);
-          console.log(`[upload] markdown extracted: filename=${filename}, chars=${text.length}`);
+          stageTimings.extract_text.ms += extractMs;
+          stageTimings.extract_text.counts!.files = (stageTimings.extract_text.counts!.files || 0) + 1;
+          stageTimings.extract_text.counts!.chars = (stageTimings.extract_text.counts!.chars || 0) + text.length;
+          log(requestId, 'extract_text completed', { stage: 'extract_text', ms: extractMs, filename, chars: text.length });
+        } catch (extractError) {
+          const extractMs = Date.now() - extractStart;
+          const errorMsg = extractError instanceof Error ? extractError.message : 'Failed to extract text';
+          throw new Error(`Failed to extract text from ${filename}: ${errorMsg}`);
         }
         
-        // Store extracted text for verification query
+        if (!text || text.trim().length === 0) {
+          throw new Error(`Empty text extracted from ${filename}`);
+        }
+        
         fileTexts.set(filename, text);
 
-        // Create document record
+        // Create document record (upsert by filename)
         let documentId: string;
         try {
           documentId = await insertDocument(filename);
-          console.log(`[upload] document created: filename=${filename}, id=${documentId}`);
+          log(requestId, 'document created', { filename, document_id: documentId });
+          
+          // Delete old chunks if re-uploading same filename
+          await deleteChunksForDocument(documentId);
+          log(requestId, 'old chunks deleted', { filename, document_id: documentId });
         } catch (docError) {
           const errorMsg = docError instanceof Error ? docError.message : String(docError);
           throw new Error(`Failed to create document record for ${filename}: ${errorMsg}`);
         }
 
-        // Chunk text (heading-aware for markdown)
+        // Stage: chunk
+        const chunkStart = Date.now();
         let chunks: string[];
         try {
-          chunks = chunkText(text, isMarkdown);
-          console.log(`[upload] chunked: filename=${filename}, chunks=${chunks.length}`);
+          chunks = await withTimeout(
+            Promise.resolve(chunkText(text, isMarkdown)),
+            TIMEOUT_CHUNK,
+            'chunk'
+          );
+          const chunkMs = Date.now() - chunkStart;
+          if (!stageTimings.chunk) {
+            stageTimings.chunk = { ms: 0, counts: { files: 0, chunks: 0 } };
+          }
+          stageTimings.chunk.ms += chunkMs;
+          stageTimings.chunk.counts!.files = (stageTimings.chunk.counts!.files || 0) + 1;
+          stageTimings.chunk.counts!.chunks = (stageTimings.chunk.counts!.chunks || 0) + chunks.length;
+          log(requestId, 'chunk completed', { stage: 'chunk', ms: chunkMs, filename, chunks: chunks.length });
         } catch (chunkError) {
+          const chunkMs = Date.now() - chunkStart;
           const errorMsg = chunkError instanceof Error ? chunkError.message : String(chunkError);
           throw new Error(`Failed to chunk text for ${filename}: ${errorMsg}`);
         }
 
-        // Process chunks and create embeddings with timeout
+        // Enforce max chunks per upload
+        let chunksToProcess = chunks;
+        let chunksSkipped = 0;
+        if (totalChunksCreated + chunks.length > MAX_CHUNKS_PER_UPLOAD) {
+          const allowed = MAX_CHUNKS_PER_UPLOAD - totalChunksCreated;
+          chunksToProcess = chunks.slice(0, allowed);
+          chunksSkipped = chunks.length - allowed;
+          log(requestId, 'chunks truncated', { filename, original_chunks: chunks.length, allowed, skipped: chunksSkipped });
+        }
+
+        // Stage: embed (with batching)
+        const embedStart = Date.now();
         const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
-        const embeddingStartTime = Date.now();
-        console.log(`[upload] embedding start: filename=${filename}, model=${embeddingModel}, chunks=${chunks.length}`);
+        log(requestId, 'embedding start', { filename, model: embeddingModel, chunks: chunksToProcess.length });
         
         let chunkCount = 0;
-        const embeddingPromises: Promise<void>[] = [];
-
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          const chunkIndex = i;
-          
-          // Create embedding with timeout
-          const embeddingPromise = (async () => {
-            try {
-              const embedding = await withTimeout(
-                createEmbedding(chunk),
-                30000, // 30s timeout per embedding
-                `embedding chunk ${chunkIndex} for ${filename}`
-              );
-              
-              // Insert chunk with timeout
-              await withTimeout(
-                insertChunk(documentId, chunkIndex, chunk, embedding),
-                15000, // 15s timeout per insert
-                `insert chunk ${chunkIndex} for ${filename}`
-              );
-              
-              chunkCount++;
-            } catch (chunkError) {
-              const errorMsg = chunkError instanceof Error ? chunkError.message : String(chunkError);
-              throw new Error(`Failed to process chunk ${chunkIndex} for ${filename}: ${errorMsg}`);
-            }
-          })();
-          
-          embeddingPromises.push(embeddingPromise);
-        }
-
-        // Wait for all embeddings and inserts to complete
+        const allEmbeddings: number[][] = [];
+        
         try {
-          await Promise.all(embeddingPromises);
-          const embeddingDuration = Date.now() - embeddingStartTime;
-          console.log(`[upload] embedding done: filename=${filename}, count=${chunkCount}, ms=${embeddingDuration}`);
-        } catch (embeddingError) {
-          const errorMsg = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
-          throw new Error(`Failed to process embeddings for ${filename}: ${errorMsg}`);
+          // Process chunks in batches with concurrency control
+          const batches: string[][] = [];
+          for (let i = 0; i < chunksToProcess.length; i += EMBEDDING_BATCH_SIZE) {
+            batches.push(chunksToProcess.slice(i, i + EMBEDDING_BATCH_SIZE));
+          }
+          
+          // Process batches with limited concurrency (simple approach: process in groups)
+          for (let i = 0; i < batches.length; i += EMBEDDING_CONCURRENCY) {
+            const concurrentBatches = batches.slice(i, i + EMBEDDING_CONCURRENCY);
+            const batchResults = await Promise.all(
+              concurrentBatches.map((batch, idx) =>
+                withTimeout(
+                  createEmbeddingsBatch(batch),
+                  TIMEOUT_EMBED,
+                  'embed'
+                )
+              )
+            );
+            
+            // Flatten results maintaining order
+            for (const embeddings of batchResults) {
+              allEmbeddings.push(...embeddings);
+            }
+          }
+          
+          if (allEmbeddings.length !== chunksToProcess.length) {
+            throw new Error(`Embedding count mismatch: expected ${chunksToProcess.length}, got ${allEmbeddings.length}`);
+          }
+          
+          const embedMs = Date.now() - embedStart;
+          if (!stageTimings.embed) {
+            stageTimings.embed = { ms: 0, counts: { files: 0, chunks: 0, batches: 0 } };
+          }
+          stageTimings.embed.ms += embedMs;
+          stageTimings.embed.counts!.files = (stageTimings.embed.counts!.files || 0) + 1;
+          stageTimings.embed.counts!.chunks = (stageTimings.embed.counts!.chunks || 0) + allEmbeddings.length;
+          stageTimings.embed.counts!.batches = (stageTimings.embed.counts!.batches || 0) + batches.length;
+          log(requestId, 'embed completed', { stage: 'embed', ms: embedMs, filename, chunks: allEmbeddings.length, batches: batches.length });
+        } catch (embedError) {
+          const embedMs = Date.now() - embedStart;
+          const errorMsg = embedError instanceof Error ? embedError.message : String(embedError);
+          throw new Error(`Failed to create embeddings for ${filename}: ${errorMsg}`);
         }
 
-        processedFiles.push({ filename, chunks: chunkCount });
+        // Stage: db_insert (bulk insert - single SQL statement)
+        const dbInsertStart = Date.now();
+        try {
+          // Prepare bulk insert data
+          const chunksData = chunksToProcess.map((chunk, i) => ({
+            chunkIndex: i,
+            text: chunk,
+            embedding: allEmbeddings[i],
+          }));
+          
+          // Single bulk insert call
+          await withTimeout(
+            insertChunksBulk(documentId, chunksData),
+            TIMEOUT_DB_INSERT,
+            'db_insert'
+          );
+          
+          chunkCount = chunksToProcess.length;
+          totalChunksCreated += chunkCount;
+          
+          const dbInsertMs = Date.now() - dbInsertStart;
+          if (!stageTimings.db_insert) {
+            stageTimings.db_insert = { ms: 0, counts: { files: 0, chunks: 0 } };
+          }
+          stageTimings.db_insert.ms += dbInsertMs;
+          stageTimings.db_insert.counts!.files = (stageTimings.db_insert.counts!.files || 0) + 1;
+          stageTimings.db_insert.counts!.chunks = (stageTimings.db_insert.counts!.chunks || 0) + chunkCount;
+          log(requestId, 'db_insert completed', { stage: 'db_insert', ms: dbInsertMs, filename, chunks: chunkCount });
+        } catch (insertError) {
+          const dbInsertMs = Date.now() - dbInsertStart;
+          const errorMsg = insertError instanceof Error ? insertError.message : String(insertError);
+          throw new Error(`Failed to insert chunks for ${filename}: ${errorMsg}`);
+        }
+
+        processedFiles.push({ 
+          filename, 
+          chunks: chunkCount,
+          ...(chunksSkipped > 0 && { chunks_skipped: chunksSkipped })
+        });
       } catch (fileError) {
-        // Include debug info in error message
-        const debugInfo = `file.name=${file.name}, file.type=${file.type}, file.size=${file.size}`;
         const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
-        throw new Error(`Error processing file ${file.name}: ${errorMsg} (${debugInfo})`);
+        throw new Error(`Error processing file ${file.name}: ${errorMsg}`);
       }
     }
 
@@ -377,21 +490,24 @@ export async function POST(request: NextRequest) {
     const totalChunks = processedFiles.reduce((sum, f) => sum + f.chunks, 0);
     const insertedFilenames = processedFiles.map(f => f.filename);
 
-    // Run a test query to verify the content is searchable (scoped to inserted files)
+    // Stage: verify_search (optional, non-blocking)
     let topRetrievalPreview: Array<{ filename: string; chunkIndex: number; textPreview: string; distance?: number; keywordScore?: number }> | null = null;
     let verifiedSearchable = false;
     
-    if (processedFiles.length > 0 && fileTexts.size > 0) {
+    // Only run verify search if explicitly enabled via env var (skip by default in production)
+    if (process.env.ENABLE_VERIFY_SEARCH === 'true' && processedFiles.length > 0 && fileTexts.size > 0) {
+      const verifyStart = Date.now();
       try {
-        // Build deterministic verification query from first file's extracted text
         const firstFilename = processedFiles[0].filename;
         const firstText = fileTexts.get(firstFilename);
-        const verificationQuery = firstText ? buildVerificationQuery(firstText) : firstFilename.split('.')[0];
+        const verificationQuery = firstText ? firstText.substring(0, 50).trim() : firstFilename.split('.')[0];
         
-        // Search scoped to only the inserted filenames
-        const testResults = await searchRunbooks(verificationQuery, 3, { filenames: insertedFilenames });
+        const testResults = await withTimeout(
+          searchRunbooks(verificationQuery, 3, { filenames: insertedFilenames }),
+          TIMEOUT_VERIFY_SEARCH,
+          'verify_search'
+        );
         
-        // Filter to only results from inserted files (double-check)
         const scopedResults = testResults.filter(result => insertedFilenames.includes(result.filename));
         
         if (scopedResults.length > 0) {
@@ -404,22 +520,22 @@ export async function POST(request: NextRequest) {
             keywordScore: result.keywordScore,
           }));
         }
+        
+        const verifyMs = Date.now() - verifyStart;
+        stageTimings.verify_search = { ms: verifyMs, counts: { results: scopedResults.length } };
+        log(requestId, 'verify_search completed', { stage: 'verify_search', ms: verifyMs, results: scopedResults.length });
       } catch (retrievalError) {
-        // Log but don't fail - retrieval preview is optional
-        console.warn('Failed to generate retrieval preview:', retrievalError);
+        const verifyMs = Date.now() - verifyStart;
+        stageTimings.verify_search = { ms: verifyMs, counts: { results: 0 } };
+        log(requestId, 'verify_search failed (non-fatal)', { stage: 'verify_search', ms: verifyMs, error: retrievalError instanceof Error ? retrievalError.message : String(retrievalError) });
       }
     }
 
-    // Log success
+    // Update upload log with success
     try {
-      await logUpload(
-        requestId,
-        latency,
-        'success',
-        null
-      );
+      await updateUploadLog(requestId, latency, 'success', null, stageTimings);
     } catch (logError) {
-      // Ignore logging errors, but continue
+      log(requestId, 'failed to update log (non-fatal)', { error: logError instanceof Error ? logError.message : String(logError) });
     }
 
     const response = {
@@ -431,36 +547,45 @@ export async function POST(request: NextRequest) {
       verified_searchable: verifiedSearchable,
       top_retrieval_preview: topRetrievalPreview,
       files: processedFiles,
+      stage_timings: stageTimings,
     };
     
-    console.log(`[upload] response sent: request_id=${requestId}, files=${processedFiles.length}, chunks=${totalChunks}, latency_ms=${latency}`);
+    log(requestId, 'upload completed', { files: processedFiles.length, chunks: totalChunks, latency_ms: latency });
     
     return NextResponse.json(response);
   } catch (error) {
     const latency = Date.now() - startTime;
     let errorMessage = 'Unknown error';
     let errorCode = 'INTERNAL_ERROR';
+    let errorStage = 'unknown';
 
     if (error instanceof Error) {
       errorMessage = error.message;
       errorCode = error.name || 'INTERNAL_ERROR';
+      // Extract stage from error message if it's a timeout
+      const stageMatch = errorMessage.match(/timeout at stage=([^\s]+)/);
+      if (stageMatch) {
+        errorStage = stageMatch[1];
+      }
     } else {
       errorMessage = String(error);
     }
 
-    // Try to log, but don't fail if logging fails
+    // Update upload log with error
     try {
-      await logUpload(requestId, latency, 'error', errorMessage);
+      await updateUploadLog(requestId, latency, 'error', errorMessage, stageTimings);
     } catch (logError) {
-      // Ignore logging errors
+      log(requestId, 'failed to update error log', { error: logError instanceof Error ? logError.message : String(logError) });
     }
 
-    // Return clean JSON error with request_id and debug info
+    log(requestId, 'upload failed', { error: errorMessage, code: errorCode, stage: errorStage, latency_ms: latency });
+
     return NextResponse.json(
       {
         request_id: requestId,
-        error: { message: errorMessage, code: errorCode },
+        error: { message: errorMessage, code: errorCode, stage: errorStage },
         latency_ms: latency,
+        stage_timings: stageTimings,
       },
       { 
         status: 500,

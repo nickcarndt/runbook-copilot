@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS upload_logs (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Add stage_timings column if it doesn't exist (for existing databases)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'upload_logs' AND column_name = 'stage_timings'
+  ) THEN
+    ALTER TABLE upload_logs ADD COLUMN stage_timings JSONB;
+  END IF;
+END $$;
+
 -- Index for vector similarity search (cosine distance)
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks 
 USING ivfflat (embedding vector_cosine_ops)

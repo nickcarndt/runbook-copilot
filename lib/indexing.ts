@@ -267,6 +267,17 @@ export async function createEmbedding(text: string): Promise<number[]> {
   return response.data[0].embedding;
 }
 
+// Create embeddings in batch (more efficient)
+export async function createEmbeddingsBatch(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const openai = getOpenAIClient();
+  const response = await openai.embeddings.create({
+    model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+    input: texts,
+  });
+  return response.data.map(item => item.embedding);
+}
+
 // Insert document and return document ID (upsert to handle UNIQUE constraint)
 export async function insertDocument(filename: string): Promise<string> {
   const result = await query(
@@ -276,6 +287,14 @@ export async function insertDocument(filename: string): Promise<string> {
     [filename]
   );
   return result.rows[0].id;
+}
+
+// Delete all chunks for a document (used when re-uploading same filename)
+export async function deleteChunksForDocument(documentId: string): Promise<void> {
+  await query(
+    `DELETE FROM chunks WHERE document_id = $1`,
+    [documentId]
+  );
 }
 
 // Check if UNIQUE constraint exists on documents.filename
@@ -310,5 +329,33 @@ export async function insertChunk(
     `INSERT INTO chunks (document_id, chunk_index, text, embedding)
      VALUES ($1, $2, $3, $4::vector)`,
     [documentId, chunkIndex, text, JSON.stringify(embedding)]
+  );
+}
+
+// Bulk insert chunks with embeddings (single SQL statement)
+export async function insertChunksBulk(
+  documentId: string,
+  chunks: Array<{ chunkIndex: number; text: string; embedding: number[] }>
+): Promise<void> {
+  if (chunks.length === 0) return;
+  
+  // Build VALUES clause with parameterized query
+  // Format: ($1, $2, $3, $4::vector), ($1, $5, $6, $7::vector), ...
+  // documentId ($1) is reused for all rows
+  const values: string[] = [];
+  const params: any[] = [documentId]; // $1 is documentId
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const paramOffset = 1 + i * 3; // Start from $2 (after documentId)
+    values.push(`($1, $${paramOffset + 1}, $${paramOffset + 2}, $${paramOffset + 3}::vector)`);
+    params.push(chunks[i].chunkIndex);
+    params.push(chunks[i].text);
+    params.push(JSON.stringify(chunks[i].embedding));
+  }
+  
+  await query(
+    `INSERT INTO chunks (document_id, chunk_index, text, embedding)
+     VALUES ${values.join(', ')}`,
+    params
   );
 }

@@ -119,6 +119,7 @@ npm run dev
 
 ## Troubleshooting
 
+- **If upload times out**: Check Vercel logs for `request_id` and stage timings to identify which stage is slow.
 - **If uploads appear "unlocked" unexpectedly**: Clear site localStorage keys:
   - `rbc_upload_token`
   - `rbc_upload_verified`
