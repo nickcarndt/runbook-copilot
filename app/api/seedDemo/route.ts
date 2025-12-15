@@ -1,11 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { logUpload, query } from '@/lib/db';
+import { ensureUploadLogsStageTimingsColumn, logUpload, query } from '@/lib/db';
 import { demoRunbooks } from '@/lib/demo-runbooks';
 import { extractTextFromMarkdown, chunkText, createEmbedding, insertDocument, insertChunk, checkUniqueConstraint } from '@/lib/indexing';
 import { checkRateLimit, getClientIP } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
+
+function isMissingStageTimingsColumnError(error: unknown) {
+  const err = error as { code?: string; message?: string };
+  return err?.code === '42703' && typeof err?.message === 'string' && err.message.includes('stage_timings');
+}
+
+async function safeLogUpload(
+  requestId: string,
+  latencyMs: number,
+  status: string,
+  errorMessage?: string
+) {
+  try {
+    await logUpload(requestId, latencyMs, status, errorMessage);
+  } catch (logError) {
+    if (isMissingStageTimingsColumnError(logError)) {
+      try {
+        await ensureUploadLogsStageTimingsColumn();
+        await logUpload(requestId, latencyMs, status, errorMessage);
+      } catch (retryError) {
+        console.error('[seedDemo] failed to log upload after ensuring column', retryError);
+      }
+    } else {
+      console.error('[seedDemo] failed to log upload', logError);
+    }
+  }
+}
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -37,12 +64,30 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    try {
+      await ensureUploadLogsStageTimingsColumn();
+    } catch (schemaError) {
+      const latency = Date.now() - startTime;
+      const errorMessage =
+        schemaError instanceof Error
+          ? schemaError.message
+          : 'Failed to ensure upload_logs.stage_timings column';
+      return NextResponse.json(
+        {
+          request_id: requestId,
+          error: { message: errorMessage, code: 'SCHEMA_ERROR' },
+          latency_ms: latency,
+        },
+        { status: 500 }
+      );
+    }
+
     // Rate limiting (public endpoint)
     const clientIP = getClientIP(request);
     const rateLimit = checkRateLimit(clientIP, 10, 60 * 1000); // 10 requests per minute
     if (!rateLimit.allowed) {
       const latency = Date.now() - startTime;
-      await logUpload(requestId, latency, 'error', 'Rate limit exceeded');
+      await safeLogUpload(requestId, latency, 'error', 'Rate limit exceeded');
       return NextResponse.json(
         {
           request_id: requestId,
@@ -57,7 +102,7 @@ export async function POST(request: NextRequest) {
     const hasConstraint = await checkUniqueConstraint();
     if (!hasConstraint) {
       const latency = Date.now() - startTime;
-      await logUpload(requestId, latency, 'error', 'Missing UNIQUE constraint on documents.filename');
+      await safeLogUpload(requestId, latency, 'error', 'Missing UNIQUE constraint on documents.filename');
       return NextResponse.json(
         {
           request_id: requestId,
@@ -128,7 +173,7 @@ export async function POST(request: NextRequest) {
     const latency = Date.now() - startTime;
 
     // Log success
-    await logUpload(
+    await safeLogUpload(
       requestId,
       latency,
       'success',
@@ -148,7 +193,7 @@ export async function POST(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorCode = error instanceof Error && error.name ? error.name : 'INTERNAL_ERROR';
 
-    await logUpload(requestId, latency, 'error', errorMessage);
+    await safeLogUpload(requestId, latency, 'error', errorMessage);
 
     return NextResponse.json(
       {

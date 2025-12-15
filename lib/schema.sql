@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS upload_logs (
   latency_ms INTEGER,
   status TEXT NOT NULL,
   error_message TEXT,
+  stage_timings JSONB,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -63,4 +64,3 @@ CREATE INDEX IF NOT EXISTS query_logs_request_id_idx ON query_logs (request_id);
 
 -- Index for upload_logs request_id lookups
 CREATE INDEX IF NOT EXISTS upload_logs_request_id_idx ON upload_logs (request_id);
-

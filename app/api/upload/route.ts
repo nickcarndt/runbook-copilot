@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { Buffer } from 'buffer';
-import { logUpload, updateUploadLog } from '@/lib/db';
+import { ensureUploadLogsStageTimingsColumn, logUpload, updateUploadLog } from '@/lib/db';
 import { extractTextFromPDF, extractTextFromMarkdown, chunkText, createEmbeddingsBatch, insertDocument, deleteChunksForDocument, insertChunksBulk, checkUniqueConstraint } from '@/lib/indexing';
 import { searchRunbooks } from '@/lib/retrieval';
 import { put } from '@vercel/blob';
@@ -20,6 +20,11 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 function log(requestId: string, message: string, data?: Record<string, any>) {
   const logData = { request_id: requestId, ...data };
   console.log(`[upload] ${message}`, JSON.stringify(logData));
+}
+
+function isMissingStageTimingsColumnError(error: unknown) {
+  const err = error as { code?: string; message?: string };
+  return err?.code === '42703' && typeof err?.message === 'string' && err.message.includes('stage_timings');
 }
 
 // Limits (tuned for 60-120s completion target)
@@ -66,12 +71,40 @@ export async function POST(request: NextRequest) {
   // Log start
   log(requestId, 'upload started');
 
+  try {
+    await ensureUploadLogsStageTimingsColumn();
+  } catch (schemaError) {
+    const latency = Date.now() - startTime;
+    const errorMessage =
+      schemaError instanceof Error
+        ? schemaError.message
+        : 'Failed to ensure upload_logs.stage_timings column';
+    log(requestId, 'schema ensure failed', { error: errorMessage });
+    return NextResponse.json(
+      {
+        request_id: requestId,
+        error: { message: errorMessage, code: 'SCHEMA_ERROR' },
+        latency_ms: latency,
+      },
+      { status: 500 }
+    );
+  }
+
   // Write initial upload_logs row with status='started'
   try {
     await logUpload(requestId, 0, 'started', null, {});
   } catch (logError) {
-    // Log error but continue
-    console.error(`[upload] failed to write initial log: ${logError}`);
+    if (isMissingStageTimingsColumnError(logError)) {
+      try {
+        await ensureUploadLogsStageTimingsColumn();
+        await logUpload(requestId, 0, 'started', null, {});
+      } catch (retryError) {
+        console.error('[upload] failed to write initial log after ensuring column', retryError);
+      }
+    } else {
+      // Log error but continue
+      console.error('[upload] failed to write initial log', logError);
+    }
   }
 
   // Early validation of required environment variables

@@ -64,6 +64,26 @@ export async function updateUploadLog(
   );
 }
 
+let ensuredUploadLogsStageTimings = false;
+let ensureUploadLogsStageTimingsPromise: Promise<void> | null = null;
+
+export async function ensureUploadLogsStageTimingsColumn() {
+  if (ensuredUploadLogsStageTimings) return;
+  if (!ensureUploadLogsStageTimingsPromise) {
+    ensureUploadLogsStageTimingsPromise = (async () => {
+      try {
+        await query('ALTER TABLE upload_logs ADD COLUMN IF NOT EXISTS stage_timings JSONB;');
+        ensuredUploadLogsStageTimings = true;
+      } catch (error) {
+        console.error('[db] failed to ensure upload_logs.stage_timings column', error);
+        throw error;
+      } finally {
+        ensureUploadLogsStageTimingsPromise = null;
+      }
+    })();
+  }
+  return ensureUploadLogsStageTimingsPromise;
+}
+
 // Export pool for direct access if needed
 export { pool };
-
