@@ -43,6 +43,13 @@ const searchRunbooksTool = tool(
     }
     
     const results = await searchRunbooks(q.trim(), topK);
+
+    // For demo/recruiter clarity: avoid mixing multiple runbooks in one answer.
+    // Keep only chunks from the single best-matching filename (top result).
+    const primaryFilename = results?.[0]?.filename;
+    const filteredResults = primaryFilename
+      ? results.filter((r: any) => r?.filename === primaryFilename)
+      : results;
     
     // Structured logging with full context
     console.log(JSON.stringify({
@@ -52,10 +59,12 @@ const searchRunbooksTool = tool(
       extracted_query_preview: q.trim().substring(0, 60),
       query_length: q.trim().length,
       topK,
-      results_count: results.length
+      results_count: filteredResults.length,
+      primary_filename: primaryFilename ?? null,
+      unique_filenames: Array.from(new Set((filteredResults || []).map((r: any) => r?.filename))).filter(Boolean)
     }));
     
-    return JSON.stringify(results, null, 2);
+    return JSON.stringify(filteredResults, null, 2);
   },
   {
     name: 'searchRunbooks',
@@ -68,41 +77,33 @@ const searchRunbooksTool = tool(
 );
 
 // System prompt for clear, numbered steps and source citations
-const SYSTEM_PROMPT = `You are a runbook assistant that helps users resolve technical issues by providing clear, actionable steps from uploaded runbooks.
+const SYSTEM_PROMPT = `You are a runbook assistant. Your job is to answer using ONLY the text returned by the searchRunbooks tool.
 
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. You MUST call the searchRunbooks tool BEFORE providing any answer. Never answer without first calling searchRunbooks.
-2. If searchRunbooks returns an empty array or no results, respond EXACTLY: "No relevant runbook content found." Do NOT provide generic advice or suggestions.
-3. Format the entire answer as Markdown.
-4. Always return a numbered list (1., 2., 3., etc.). Do NOT use headings like # or ##.
-5. Every command must be inside a fenced code block with language bash:
+CRITICAL RULES — YOU MUST FOLLOW THESE:
+1) You MUST call the searchRunbooks tool BEFORE answering. Never answer without calling searchRunbooks.
+2) If searchRunbooks returns an empty array, respond EXACTLY: "No relevant runbook content found." (no extra text).
+3) Output MUST be valid Markdown.
+4) Output MUST be a numbered list ONLY. Every step MUST start with "1.", "2.", "3." etc. Do NOT use headings like "#" or "##" anywhere.
+5) Do NOT insert line breaks inside sentences. Only use newlines to separate list items and code fences.
+6) If you include shell commands, put them inside a fenced code block using bash. Do NOT show commands inline.
+7) At the end of EVERY numbered step, append the citation EXACTLY like: Source: [FILENAME](#sources)
+   - No trailing punctuation after the link.
+   - Use the filename(s) from the search results.
+8) Prefer a single cohesive runbook. Do not mix steps from different runbook files unless the user explicitly asks to compare.
 
-\`\`\`bash
-command here
-\`\`\`
+FORMAT TEMPLATE (follow exactly):
+1. One clear instruction sentence. Source: [example.md](#sources)
 
-6. Put citations at the end of each step exactly like: Source: [filename](#sources)
-7. Only use information from the searchRunbooks tool results - do not make up or infer information
-
-When citing sources, use the filename from the search results.
-
-Example format:
-1. First step based on runbook content
+2. Another instruction sentence.
 
 \`\`\`bash
-ps aux
-free -h
+command --flags
+another_command
 \`\`\`
 
-Source: [database-troubleshooting.md](#sources)
+Source: [example.md](#sources)
 
-2. Second step with explanation
-
-Source: [database-troubleshooting.md](#sources)
-
-3. Third step
-
-Source: [memory-optimization.md](#sources)`;
+3. Final instruction sentence. Source: [example.md](#sources)`;
 
 // Lazy agent creation - only initialize at runtime, not at build time
 let runbookAgentInstance: ReturnType<typeof agent> | null = null;
