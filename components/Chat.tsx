@@ -55,16 +55,22 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
   const normalizeCitations = useCallback((text: string) => {
     // Convert plain text citations like "Source: somefile.pdf." or "Source: somefile.md" 
     // into markdown links: "Source: [somefile.pdf](#sources)"
-    // Idempotent: only convert if not already a markdown link
-    // Nuke-proof: skip entire line if it already contains ](#sources) or Source: [
+    // 
+    // IDEMPOTENT: This function is safe to call multiple times on the same text.
+    // It only acts as a fallback for plain-text citations. The agent prompt already
+    // outputs canonical format: "Source: [filename](#sources)".
+    //
+    // Nuke-proof: Skip entire line if it already contains ](#sources) or Source: [
+    // Example: normalizeCitations("Source: [file.pdf](#sources)") returns unchanged
+    //          normalizeCitations("Source: file.pdf.") returns "Source: [file.pdf](#sources)"
     const lines = text.split('\n');
     const normalizedLines = lines.map(line => {
-      // Skip lines that already contain markdown link markers
+      // Skip lines that already contain markdown link markers (idempotent check)
       if (line.includes('](#sources)') || line.includes('Source: [')) {
         return line;
       }
       
-      // Only process lines that match plain text citation pattern
+      // Only process lines that match plain text citation pattern (fallback only)
       return line.replace(/Source:\s*([^\s]+\.(pdf|md|PDF|MD))[.,;:!?]*/g, (match, filename) => {
         const clean = filename.replace(/[.,;:!?]+$/, '');
         return `Source: [${clean}](#sources)`;
