@@ -56,25 +56,24 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
     // Convert plain text citations like "Source: somefile.pdf." or "Source: somefile.md" 
     // into markdown links: "Source: [somefile.pdf](#sources)"
     // Idempotent: only convert if not already a markdown link
-    // Skip if already contains ](#sources) or Source: [filename](#sources)
-    let normalized = text.replace(/Source:\s*([^\s]+\.(pdf|md|PDF|MD))[.,;:!?]*/g, (match, filename) => {
-      // Check if this is already a markdown link by looking ahead
-      const matchIndex = text.indexOf(match);
-      const afterMatch = text.substring(matchIndex + match.length);
-      // If already has markdown link structure (starts with [ or (#sources)), skip
-      if (afterMatch.trim().startsWith('[') || afterMatch.trim().startsWith('(#sources)')) {
-        return match;
+    // Nuke-proof: skip entire line if it already contains ](#sources) or Source: [
+    const lines = text.split('\n');
+    const normalizedLines = lines.map(line => {
+      // Skip lines that already contain markdown link markers
+      if (line.includes('](#sources)') || line.includes('Source: [')) {
+        return line;
       }
-      // Check if already in format Source: [filename](#sources) by looking before
-      const beforeMatch = text.substring(Math.max(0, matchIndex - 50), matchIndex);
-      if (beforeMatch.includes('Source: [') && afterMatch.includes('](#sources)')) {
-        return match;
-      }
-      const clean = filename.replace(/[.,;:!?]+$/, '');
-      return `Source: [${clean}](#sources)`;
+      
+      // Only process lines that match plain text citation pattern
+      return line.replace(/Source:\s*([^\s]+\.(pdf|md|PDF|MD))[.,;:!?]*/g, (match, filename) => {
+        const clean = filename.replace(/[.,;:!?]+$/, '');
+        return `Source: [${clean}](#sources)`;
+      });
     });
     
-    // Defensive cleanup: collapse repeated ](#sources) sequences
+    let normalized = normalizedLines.join('\n');
+    
+    // Defensive cleanup: collapse repeated ](#sources) sequences (safety net)
     normalized = normalized.replace(/(\]\(#sources\))+/g, '](#sources)');
     
     return normalized;
