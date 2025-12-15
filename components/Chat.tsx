@@ -215,19 +215,20 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
                     remarkPlugins={[remarkGfm]}
                     components={{
                       a: ({ href, children, ...props }: any) => {
-                        // Normalize href: treat "#sources", "#sources.", "#sources," etc as "#sources"
-                        const normalizedHref = href?.replace(/^#sources[.,;:!?]*$/, '#sources');
-                        if (normalizedHref === '#sources') {
+                        // Normalize href: treat #sources, /#sources, full URLs ending in #sources, and versions with trailing punctuation
+                        const isSourcesLink = href && /#sources[.,;:!?]*$/.test(href);
+                        if (isSourcesLink) {
                           return (
                             <a
                               href={href}
                               onClick={(e) => {
                                 e.preventDefault();
-                                const target = document.getElementById('sources');
-                                if (target) {
-                                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                const el = document.getElementById('sources');
+                                if (el) {
+                                  const y = el.getBoundingClientRect().top + window.scrollY - 96;
+                                  window.scrollTo({ top: y, behavior: 'smooth' });
                                 } else {
-                                  console.warn('Source link target not found', { href, requestId: currentRequestId });
+                                  console.warn('[sources-link] anchor not found', { href });
                                 }
                               }}
                               className="text-blue-600 hover:text-blue-800 underline"
