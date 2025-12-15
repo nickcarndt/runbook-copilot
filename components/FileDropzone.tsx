@@ -832,8 +832,9 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                     </div>
                   </div>
                 ) : (
-                  <div className="text-gray-500 text-xs">
-                    Preview scoring unavailable (ENABLE_VERIFY_SEARCH is off).
+                  <div className="text-gray-500 text-xs space-y-1">
+                    <div>Preview scoring unavailable (ENABLE_VERIFY_SEARCH is off).</div>
+                    <div className="text-gray-400 text-[10px]">To enable previews, set ENABLE_VERIFY_SEARCH=true in Vercel env vars.</div>
                   </div>
                 )}
               </div>
