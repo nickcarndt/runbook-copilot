@@ -215,9 +215,21 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
                     remarkPlugins={[remarkGfm]}
                     components={{
                       a: ({ href, children, ...props }: any) => {
-                        // Normalize href: treat #sources, /#sources, full URLs ending in #sources, and versions with trailing punctuation
+                        // Check if this is a #sources link (exact match or ending in #sources with optional punctuation)
                         const isSourcesLink = href && /#sources[.,;:!?]*$/.test(href);
-                        if (isSourcesLink) {
+                        
+                        // Check if this is a citation link:
+                        // 1. Link text looks like a filename (ends in .pdf or .md)
+                        // 2. Link text contains "Source:" (citation pattern)
+                        const linkText = String(children).trim();
+                        const isFilenameLink = /\.(pdf|md)$/i.test(linkText);
+                        const containsSource = /Source:/i.test(linkText);
+                        
+                        // Treat as citation if it's a filename link or contains "Source:"
+                        // and href is not a full URL (to avoid breaking external links)
+                        const isCitationLink = (isFilenameLink || containsSource) && href && !href.startsWith('http') && !href.startsWith('/');
+                        
+                        if (isSourcesLink || isCitationLink) {
                           return (
                             <a
                               href={href}
@@ -228,7 +240,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
                                   const y = el.getBoundingClientRect().top + window.scrollY - 96;
                                   window.scrollTo({ top: y, behavior: 'smooth' });
                                 } else {
-                                  console.warn('[sources-link] anchor not found', { href });
+                                  console.warn('[sources-link] anchor not found', { href, linkText });
                                 }
                               }}
                               className="text-blue-600 hover:text-blue-800 underline"
