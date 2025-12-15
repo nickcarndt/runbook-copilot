@@ -676,16 +676,19 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         `Request ID: ${uploadSuccessData.requestId}`,
                         '',
                         'Retrieval preview:',
-                        ...previews.map((r, i) => {
-                          let previewText = `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`;
-                          // Always include similarity metrics (matches what's visible on screen)
-                          if (r.distance !== undefined) {
-                            const similarity = Math.max(0, Math.min(1, 1 - r.distance));
-                            previewText += `\nSimilarity (cosine): ${similarity.toFixed(2)} (higher is better)`;
-                            previewText += `\nCosine distance: ${r.distance.toFixed(4)} (lower is better)`;
-                          }
-                          return previewText;
-                        }),
+                        ...(previews.length > 0 
+                          ? previews.map((r, i) => {
+                              let previewText = `${r.filename} (chunk ${r.chunkIndex}):\n${r.textPreview}`;
+                              // Always include similarity metrics (matches what's visible on screen)
+                              if (r.distance !== undefined) {
+                                const similarity = Math.max(0, Math.min(1, 1 - r.distance));
+                                previewText += `\nSimilarity (cosine): ${similarity.toFixed(2)} (higher is better)`;
+                                previewText += `\nCosine distance: ${r.distance.toFixed(4)} (lower is better)`;
+                              }
+                              return previewText;
+                            })
+                          : ['Preview scoring unavailable (ENABLE_VERIFY_SEARCH is off).']
+                        ),
                       ].join('\n');
                       
                       await navigator.clipboard.writeText(details);
@@ -698,7 +701,7 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                     {copiedDetails ? '✓ Copied!' : 'Copy details'}
                   </button>
                 </div>
-                {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 && (
+                {uploadSuccessData.topRetrievalPreview && uploadSuccessData.topRetrievalPreview.length > 0 ? (
                   <div>
                     <div className="space-y-2">
                       {/* Show first preview always */}
@@ -827,6 +830,10 @@ export default function FileDropzone({ onDemoRunbooksLoad, demoOnly = false, onU
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-500 text-xs">
+                    Preview scoring unavailable (ENABLE_VERIFY_SEARCH is off).
                   </div>
                 )}
               </div>
