@@ -27,6 +27,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
   const [loading, setLoading] = useState(false);
   const [currentRequestId, setCurrentRequestId] = useState<string>('');
   const [startTime, setStartTime] = useState<number>(0);
+  const [isThinking, setIsThinking] = useState(false);
+  const [hasReceivedFirstToken, setHasReceivedFirstToken] = useState(false);
 
   // Expose reset function via ref
   useImperativeHandle(ref, () => ({
@@ -36,6 +38,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
       setLoading(false);
       setCurrentRequestId('');
       setStartTime(0);
+      setIsThinking(false);
+      setHasReceivedFirstToken(false);
     }
   }));
 
@@ -60,6 +64,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
+    setIsThinking(true);
+    setHasReceivedFirstToken(false);
     const submitStartTime = Date.now();
     setStartTime(submitStartTime);
 
@@ -127,6 +133,9 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
         } else {
           assistantMessage += chunk;
           assistantMessage = linkifySources(assistantMessage);
+          if (!hasReceivedFirstToken && assistantMessage.trim().length > 0) {
+            setHasReceivedFirstToken(true);
+          }
         }
 
         setMessages(prev => {
@@ -185,6 +194,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Failed to get response' }]);
     } finally {
       setLoading(false);
+      setIsThinking(false);
     }
   };
 
@@ -205,13 +215,20 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
                     remarkPlugins={[remarkGfm]}
                     components={{
                       a: ({ href, children, ...props }: any) => {
-                        if (href === '#sources') {
+                        // Normalize href: treat "#sources", "#sources.", "#sources," etc as "#sources"
+                        const normalizedHref = href?.replace(/^#sources[.,;:!?]*$/, '#sources');
+                        if (normalizedHref === '#sources') {
                           return (
                             <a
                               href={href}
                               onClick={(e) => {
                                 e.preventDefault();
-                                document.getElementById('sources')?.scrollIntoView({ behavior: 'smooth' });
+                                const target = document.getElementById('sources');
+                                if (target) {
+                                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                } else {
+                                  console.warn('Source link target not found', { href, requestId: currentRequestId });
+                                }
                               }}
                               className="text-blue-600 hover:text-blue-800 underline"
                               {...props}
@@ -262,6 +279,20 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ onSourcesUpdate, onAnswerComplete
             </div>
           </div>
         ))}
+        {isThinking && !hasReceivedFirstToken && (
+          <div className="text-left">
+            <div className="inline-block p-2 rounded bg-gray-100">
+              <div className="prose prose-sm max-w-none" aria-live="polite">
+                <span className="sr-only">Assistant is typing…</span>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></span>
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {suggestedQuestions.length > 0 && (
         <div className="mb-3">
