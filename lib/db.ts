@@ -6,7 +6,9 @@ const pool = new Pool({
   // Serverless-friendly settings
   max: 1, // Single connection per serverless function
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // 10s to handle cold starts and DB wake-up (Neon/Vercel Postgres scale-to-zero)
+  // SSL required for most managed Postgres (Neon, Vercel, Supabase)
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
 });
 
 // Basic query helper
