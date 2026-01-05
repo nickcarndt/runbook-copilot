@@ -27,23 +27,37 @@ function getOpenAIClient(): OpenAI {
 
 // Generate Slack incident update
 async function generateSlackSummary(question: string, answer: string): Promise<string> {
-  const prompt = `Create a concise Slack incident update from this Q&A:
+  const prompt = `Write a brief Slack incident status update based on this Q&A.
 
 Question: ${question}
 
-Answer: ${answer}
+Answer (technical details for context only - do not include in output):
+${answer}
 
-Format as a brief Slack message (2-3 sentences max). Use clear, professional tone. Include the key resolution steps.`;
+OUTPUT RULES (follow exactly):
+1. Write ONLY 2-3 plain text sentences
+2. NO markdown, NO asterisks, NO backticks, NO code, NO commands
+3. Write as a STATUS UPDATE from the engineer who resolved the issue
+4. Structure: What was the issue → What action was taken → Current status
+5. Use past tense ("Investigated", "Resolved", "Applied")
+
+GOOD EXAMPLE:
+"Investigated high memory utilization on affected hosts. Identified page cache buildup and applied cache flush per runbook. Systems stable, continuing to monitor."
+
+BAD EXAMPLE (do not do this):
+"**Incident Update** First run \`top -o %MEM\` to check memory..."
+
+Write the status update now (plain text only):`;
 
   const openai = getOpenAIClient();
   const response = await openai.chat.completions.create({
     model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: 'You are a technical writer creating concise incident updates for Slack.' },
+      { role: 'system', content: 'You write brief incident status updates for Slack. Plain text only. No formatting, no commands, no technical details. 2-3 sentences maximum.' },
       { role: 'user', content: prompt },
     ],
-    temperature: 0.3, // Low temperature for deterministic output
-    max_tokens: 200,
+    temperature: 0.2, // Lower for more consistent output
+    max_tokens: 120, // Enforce brevity
   });
 
   return response.choices[0]?.message?.content || 'Unable to generate summary';
