@@ -9,9 +9,18 @@ Agentic RAG runbook copilot: upload runbooks → ask questions → get step-by-s
 
 **Run it in 30s**: Upload PDF/Markdown runbooks, ask "How do I mitigate high memory usage?", get cited answers, and draft incident updates.
 
-## Demo
+## Screenshots
 
-> TODO: Add GIF or screenshot showing the upload → question → answer flow
+<p align="center">
+  <img src="screenshots/runbook-copilot-main.png" alt="Runbook Copilot main interface" width="800">
+  <br>
+  <em>Ask questions, get grounded answers with source citations</em>
+</p>
+
+| Draft Slack Updates | Hybrid Search Details |
+|:-------------------:|:---------------------:|
+| <img src="screenshots/runbook-copilot_draft_slack_update.png" alt="Draft Slack Update feature" width="400"> | <img src="screenshots/runbook-copilot_chunk_advanced_details.png" alt="Chunk details with similarity scores" width="400"> |
+| *Generate incident updates ready to paste into Slack* | *Hybrid search with cosine similarity and keyword reranking* |
 
 ## Features
 
